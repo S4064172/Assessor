@@ -259,9 +259,9 @@ public class TreeDecomposer {
 			BlockStmt bodyMethod = methodToAddStatement.getBody().get();
 			if(clonedNode instanceof ExpressionStmt) { //2 option, is Assert or normal command
 				
-				if( lastPageObject!=null && !waitForElementFound && clonedNode.toString().contains("click") ) {
+				if( lastPageObject!=null && (clonedNode.toString().contains("click") || clonedNode.toString().contains("assert")) ) {
 					//create Wait for element to prevent missing loading on async loading
-					createWaitForElement((ExpressionStmt) clonedNode,bodyMethod);
+					createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
 					waitForElementFound = true;
 				}
 				
@@ -339,11 +339,23 @@ public class TreeDecomposer {
 				
 	}
 
-	private void createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod) {
+	private void createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod, boolean waitForElementFound) {
 		Node cloned = instruction.clone().getChildNodes().get(0);
-		MethodCallExpr methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
-		Expression argument = methodCall.getArgument(0);
-		bodyMethod.addStatement("By elem = " + argument.toString() + ";");
+		MethodCallExpr methodCall;
+		Expression argument;
+		if(cloned.toString().contains("assert")) {
+			methodCall = (MethodCallExpr) cloned.getChildNodes().get(1).getChildNodes().get(0);
+			argument = methodCall.getArgument(0);
+		}else {
+			methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
+			argument = methodCall.getArgument(0);
+		}
+		
+		
+		if(!waitForElementFound)
+			bodyMethod.addStatement("By elem = " + argument.toString() + ";");
+		else 
+			bodyMethod.addStatement("elem = " + argument.toString() + ";");
 		bodyMethod.addStatement("MyUtils.WaitForElementLoaded(driver,elem);");
 	}
 
