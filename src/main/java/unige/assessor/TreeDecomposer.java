@@ -189,26 +189,29 @@ public class TreeDecomposer {
 			analyzeInstructionCalls(newMethod,bodyStmt);
 		}		
 	}
-	
-	
-	/** Analyze each instruction, to divide between TestMethod calls and PageObject calls
+		
+	/** Analyze each instruction recursively, to divide between TestMethod calls and PageObject calls and to create the dependency between sub PageObject call
 	 *  
-	 * @param methodTestSuite
-	 * @param blockStmt
+	 * @param methodTestSuite: name of the method under analisys
+	 * @param blockStmt: contain the body of the methos
+	 * @param lastPageObject: hold the last page object found
+	 * @param methodToAddStatement: hold the Method where the statement is added, could be a TestSuite method or a PageObject Method
+	 * @param localFieldDeclaration: found the pageObject name, and in the value the name of the variable
+	 * @param values: list for each values to be called in the method call declaration
+	 * @param arguments: list for each argument in the Method Declaration
+	 * @param waitForElementFound: flag uses to understand if is the first wait intruction
 	 */
-	private void analyzeInstructionCalls(MethodDeclaration methodTestSuite, Optional<BlockStmt> blockStmt) {
-		//This will hold the last page object found
-		ClassOrInterfaceDeclaration lastPageObject = null;
-		//This will hold the Method where the statement is added, could be a TestSuite method or a PageObject Method
-		MethodDeclaration methodToAddStatement = methodTestSuite;
-		//In the Key we can found the pageObject name, and in the value the name of the variable
-		Map<String,String> localFieldDeclaration = new HashMap<>();
-		//List for each values to be called in the method call declaration
-		List<Node> values = new LinkedList<>();
-		//List for each argument in the Method Declaration
-		List<NameExpr> arguments = new LinkedList<NameExpr>();
-		boolean waitForElementFound = false;
-		for(Node node : blockStmt.get().getChildNodes()) {
+	private void analyzeInstructionCalls_recursive(
+			MethodDeclaration methodTestSuite, Optional<BlockStmt> blockStmt,
+			ClassOrInterfaceDeclaration lastPageObject, MethodDeclaration methodToAddStatement,
+			Map<String,String> localFieldDeclaration, 
+			List<Node> values, List<NameExpr> arguments,
+			boolean waitForElementFound
+			) {
+			if( blockStmt.get().getChildNodes().size() == 0)
+				return;
+		
+			Node node = blockStmt.get().getChildNodes().get(0);
 			
 			Map<String,String> delimiterFound = checkDelimiterInstruction(node);
 			boolean delimiterEnd = false;
@@ -218,15 +221,17 @@ public class TreeDecomposer {
 			//If there is a delimiter
 			if(delimiterFound!=null || delimiterEnd ) {
 				//if a pageObject is found, the create the pageObject calls
-				if(lastPageObject!=null)
-					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments);					
-
+				if(lastPageObject!=null) {		
+					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments);			
+				}
 				//if the instruction is to go back to the write to the main Test Method
 				//clear the lastPageObject and change the method where to add statement
-				if(delimiterEnd) {					
+				if(delimiterEnd) {		
 					lastPageObject = null;
 					methodToAddStatement = methodTestSuite;
-					continue;
+					blockStmt.get().remove(node);
+					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, waitForElementFound);
+					return;
 				}
 				waitForElementFound = false;
 				//If a delimiter is found, get the pageObject Name
@@ -250,7 +255,11 @@ public class TreeDecomposer {
 					.setType("void")
 					.setName(delimiterFound.get(KEY_HASH_PO_METHOD))
 					.setPublic(true);
-				continue; //Don't add the System.out.println
+
+				blockStmt.get().remove(node);
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, waitForElementFound);
+				
+				return;
 				
 			}
 			//Because each node is linked with others node, if the node isn't cloned the program will crash because the structure that holds the node is not modifiable
@@ -332,13 +341,38 @@ public class TreeDecomposer {
 			}else { 
 				bodyMethod.addStatement((Statement) clonedNode);
 			}
-		}
+			blockStmt.get().remove(node);
+			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, waitForElementFound);
+			return;
+	}
+		
+	/** Analyze each instruction, to divide between TestMethod calls and PageObject calls
+	 *  
+	 * @param methodTestSuite: name of the method under analisys
+	 * @param blockStmt: contain the body of the methos
+	 */
+	private void analyzeInstructionCalls(MethodDeclaration methodTestSuite, Optional<BlockStmt> blockStmt) {
+		//This will hold the last page object found
+		ClassOrInterfaceDeclaration lastPageObject = null;
+		//This will hold the Method where the statement is added, could be a TestSuite method or a PageObject Method
+		MethodDeclaration methodToAddStatement = methodTestSuite;
+		//In the Key we can found the pageObject name, and in the value the name of the variable
+		Map<String,String> localFieldDeclaration = new HashMap<>();
+		//List for each values to be called in the method call declaration
+		List<Node> values = new LinkedList<>();
+		//List for each argument in the Method Declaration
+		List<NameExpr> arguments = new LinkedList<NameExpr>();
+		boolean waitForElementFound = false;
+		
+		analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments, waitForElementFound);
 		//after all the instruction end, if there is a PageObject declared then add his MethodCallDeclaration to the TestSuite Method
 		if(lastPageObject!=null)				
 			addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments);					
 				
 	}
 
+	
+		
 	private void createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod) {
 		Node cloned = instruction.clone().getChildNodes().get(0);
 		MethodCallExpr methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
