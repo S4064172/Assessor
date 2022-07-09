@@ -6,7 +6,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
+import java.util.List;
 
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
@@ -23,8 +23,8 @@ public class AssessorTool {
 		boolean normalize = false;
 		String poPrefix = "";
 
-		String inputDir = args[0];
-		//String inputDir = "H:/_TESI/WebAppTesi/_Booking/HotelBooking_webApp/SeleniumIde_Test";
+		//String inputDir = args[0];
+		String inputDir = "H:/_TESI/_Fase2_SviluppoMigliorie/_NameFunction_JavaStyle/ProjcetManagement_Side";
 		String outputDir = inputDir+"/Output/";
 	
 		File[] matchingFiles = searchFilesToAnalyze(inputDir);
@@ -89,7 +89,14 @@ public class AssessorTool {
         // Configure JavaParser to use type resolution
         JavaSymbolSolver symbolSolver = new JavaSymbolSolver(combinedTypeSolver);
         StaticJavaParser.getConfiguration().setSymbolResolver(symbolSolver);
-        String fileText = Files.readString(Path.of(file.getAbsolutePath()));
+        String fileText = new String();
+        for (String line : Files.readString(Path.of(file.getAbsolutePath())).split("\n")) {
+			System.out.println(line);
+			if(line.trim().startsWith("public void") && Character.isDigit(line.trim().split(" ")[2].charAt(0)) ) {
+				line = line.replaceFirst("[0-9]+", "");	
+			}
+			fileText+=line+"\n";
+		}
         
         // Parse some code
         return StaticJavaParser.parse(fileText);
