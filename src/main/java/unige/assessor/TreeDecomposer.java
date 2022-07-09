@@ -38,6 +38,7 @@ public class TreeDecomposer {
 	//Delimiter generated from SeleniumIDE Extension
 	private static final String DELIMITER_PO_DECLARATION = "System.out.println(\"{ASSESSOR}";
 	private static final String DELIMITER_BACK_TO_MAIN = DELIMITER_PO_DECLARATION+"backToMain\");";
+	private static final String DELIMITER_BACK_TO_FATHER = DELIMITER_PO_DECLARATION+"backToFather\");";
 	
 	
 	
@@ -213,23 +214,47 @@ public class TreeDecomposer {
 			boolean waitForElementFound, boolean isInner
 			) {
 		
-			if( blockStmt.get().getChildNodes().size() == 0)
+			if( blockStmt.get().getStatements().size() == 0) {
+				if (lastPageObject != null)
+					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);
 				return;
+			}
+				
 		
-			Node node = blockStmt.get().getChildNodes().get(0);
-
+			Node node = blockStmt.get().getStatement(0);
 			
 			Map<String,String> delimiterFound = checkDelimiterInstruction(node);
+			
 			boolean delimiterEnd = false;
 			
 			if(delimiterFound==null) 
 				delimiterEnd = _checkDelimiterEnd(node);
+			
+			//If we are parsing an inner method and we found an new startDelimiter or a BacktoMain
+			//we add manually the delimiter backToFather
+			if((delimiterFound!=null || delimiterEnd) && lastPageObject!=null && isInner) {
+				blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_FATHER.replace(";", "")));
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, true);
+				return;
+			}
+			
+			if(delimiterFound==null && !delimiterEnd) 
+				delimiterEnd =  _checkDelimiterChildEnd(node);
+			
+			//If we are parsing an inner method and we found an new startDelimiter or a BacktoMain
+			//we add manually the close the inner method
+//			if((delimiterFound!=null || delimiterEnd) && lastPageObject!=null && isInner) {
+//				addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, true);	
+//				return;
+//				
+//			}
+					
 			//If there is a delimiter
 			if(delimiterFound!=null || delimiterEnd ) {
 				//if a pageObject is found, and there isn't the and delimiter
 				//starts the inner generation
 				if(lastPageObject!=null && !delimiterEnd) {
-					
+											
 					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true);
 					
 					innerValues.addAll(values);
@@ -241,6 +266,7 @@ public class TreeDecomposer {
 					innerValues = new LinkedList<>();
 					innerArguments = new LinkedList<NameExpr>();
 					
+					
 				}else {
 					//if the instruction is to go back to the write to the main Test Method
 					//clear the lastPageObject, the valuesInner, the innerArguments
@@ -248,8 +274,6 @@ public class TreeDecomposer {
 					if(delimiterEnd) {		
 						addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);	
 						lastPageObject = null;
-						innerValues = new LinkedList<>();
-						innerArguments = new LinkedList<NameExpr>();
 						methodToAddStatement = methodTestSuite;
 						blockStmt.get().remove(node);
 						return;
@@ -278,7 +302,7 @@ public class TreeDecomposer {
 						.setPublic(true);
 					blockStmt.get().remove(node);
 				}
-				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, valuesInner, innerArguments, waitForElementFound,isInner);
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound,isInner);
 
 				return;
 				
@@ -936,6 +960,10 @@ public class TreeDecomposer {
 	 */
 	private boolean _checkDelimiterEnd(Node exp) {
 		return DELIMITER_BACK_TO_MAIN.equals(exp.toString()); 
+	}
+	
+	private boolean _checkDelimiterChildEnd(Node exp) {
+		return DELIMITER_BACK_TO_FATHER.equals(exp.toString()); 
 	}
 	
 	/** Check if the instruction is a System.out.println(\"{SeleniumIDEExt} Delimiter
