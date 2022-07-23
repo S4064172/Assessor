@@ -341,7 +341,8 @@ public class TreeDecomposer {
 								methodTestSuite, 
 								lastPageObject,
 								localFieldDeclaration.get(lastPageObject.getNameAsString()), 		
-								expStmt);
+								expStmt,
+								methodToAddStatement.getNameAsString());
 					}else { //nothing special with this assert
 						bodyMethod = methodTestSuite.getBody().get();
 						bodyMethod.addStatement(expStmt);	
@@ -754,8 +755,9 @@ public class TreeDecomposer {
 	 * @param pageObjectVariable
 	 * @param expression
 	 */
-	private void analyzeAssertCallExpStmt(MethodDeclaration methodTestSuite, ClassOrInterfaceDeclaration pageObject, String pageObjectVariable,
-			ExpressionStmt expression) {	
+	private void analyzeAssertCallExpStmt(
+			MethodDeclaration methodTestSuite, ClassOrInterfaceDeclaration pageObject, String pageObjectVariable,
+			ExpressionStmt expression, String methodName) {	
 		BlockStmt bodyMethod;
 		MethodCallExpr assertCall = (MethodCallExpr) expression.getExpression();		
 		//The first node contains the assert, the second contains the methodCall to the locator
@@ -767,7 +769,7 @@ public class TreeDecomposer {
 		if(methodPO==null) {
 			//create the method PO statement			
 			methodPO = new MethodDeclaration() 					
-					.setName(generateNameForGetterCalls(findElementInvocation))
+					.setName(methodName)
 					.setPublic(true);
 			bodyMethod = methodPO.getBody().get();
 			//Node 0 is the commnad
