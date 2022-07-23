@@ -204,6 +204,7 @@ public class TreeDecomposer {
 	 * @param innerArguments: list for each argument in all the inner the Method Declaration
 	 * @param waitForElementFound: flag is used to understand if is the first wait instruction
 	 * @param isInner: flag is used to understand if is the method is inner or not
+	 * @param lastLocatorUsed: is used to store the last locator 
 	 */
 	private void analyzeInstructionCalls_recursive(
 			MethodDeclaration methodTestSuite, Optional<BlockStmt> blockStmt,
@@ -264,6 +265,7 @@ public class TreeDecomposer {
 					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,lastLocatorUsed);
 					
 					lastPageObject = null;
+					lastLocatorUsed = "";
 					innerValues = new LinkedList<>();
 					innerArguments = new LinkedList<NameExpr>();
 					
@@ -272,11 +274,19 @@ public class TreeDecomposer {
 					//if the instruction is to go back to the write to the main Test Method
 					//clear the lastPageObject, the valuesInner, the innerArguments
 					//and change the method where to add statement
-					if(delimiterEnd) {		
-						addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);	
-						lastPageObject = null;
-						methodToAddStatement = methodTestSuite;
+					if(delimiterEnd) {
+						//if lastPageObject is null means that I have
+						//already added the page object
+						if(lastPageObject != null) {
+							addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);	
+							lastPageObject = null;
+							methodToAddStatement = methodTestSuite;
+							lastLocatorUsed = "";
+						}
+						
 						blockStmt.get().remove(node);
+						
+						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 						return;
 					}
 					waitForElementFound = false;
@@ -342,13 +352,15 @@ public class TreeDecomposer {
 								lastPageObject,
 								localFieldDeclaration.get(lastPageObject.getNameAsString()), 		
 								expStmt,
-								methodToAddStatement.getNameAsString());
+								methodToAddStatement.getNameAsString(),
+								lastLocatorUsed);
 					}else { //nothing special with this assert
 						bodyMethod = methodTestSuite.getBody().get();
 						bodyMethod.addStatement(expStmt);	
 					}	
 					//Return to write in the main statement as default
 					lastPageObject = null;
+					lastLocatorUsed = "";
 					methodToAddStatement = methodTestSuite;
 				}
 				else { 
@@ -367,12 +379,13 @@ public class TreeDecomposer {
 					//if the method contains a search for an element, then create the statement, it should never be empty because contains at least 1 assert call
 					if(childInstruction.get(0).toString().contains("driver.findElement")) { 
 							generateAssertCallBlockStmt(methodTestSuite,lastPageObject, localFieldDeclaration.get(lastPageObject.getNameAsString()), 
-									 blockInstruction,values,arguments,methodToAddStatement.getNameAsString());					
+									 blockInstruction,values,arguments,methodToAddStatement.getNameAsString(),lastLocatorUsed);					
 					}else { //nothing special with this assert
 						bodyMethod = methodTestSuite.getBody().get();
 						bodyMethod.addStatement(blockInstruction);	
 					}	
 					lastPageObject = null;
+					lastLocatorUsed = "";
 					methodToAddStatement = methodTestSuite;
 				}else {					
 					BlockStmt blockParsed = new BlockStmt();
@@ -757,43 +770,43 @@ public class TreeDecomposer {
 	 */
 	private void analyzeAssertCallExpStmt(
 			MethodDeclaration methodTestSuite, ClassOrInterfaceDeclaration pageObject, String pageObjectVariable,
-			ExpressionStmt expression, String methodName) {	
+			ExpressionStmt expression, String methodName, String lastLocator) {	
 		BlockStmt bodyMethod;
 		MethodCallExpr assertCall = (MethodCallExpr) expression.getExpression();		
 		//The first node contains the assert, the second contains the methodCall to the locator
 //		MethodCallExpr firstArgumentInvocation = (MethodCallExpr) assertCall.getChildNodes().get(1);
 //		MethodCallExpr findElementInvocation = (MethodCallExpr) firstArgumentInvocation.getChildNodes().get(0);
 		List<Node> childNodes = assertCall.getChildNodes(); 		
-		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
+//		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
 		
-		if(methodPO==null) {
+//		if(methodPO==null) {
 			//create the method PO statement			
-			methodPO = new MethodDeclaration() 					
+		MethodDeclaration methodPO = new MethodDeclaration() 					
 					.setName(methodName)
 					.setPublic(true);
-			bodyMethod = methodPO.getBody().get();
-			//Node 0 is the commnad
-			//Node 1 is the Locator
-			//Node 2 is the optional value to check			
-			switch(childNodes.get(0).toString()) {
-				case "assertEquals":
-				case "assertThat":							
-					methodPO.setType("String");
-					break;
-				case "assertTrue":
-				case "assertFalse":							
-					methodPO.setType("boolean");
-					break;
-				default:						
-					throw new UnsupportedOperationException("No conversion found for this istruction: " +childNodes.get(0).toString() );					
-			}												
-			MethodCallExpr methodCall = (MethodCallExpr) childNodes.get(1);
-			createWaitForElement((ExpressionStmt) expression,bodyMethod,false);
-			bodyMethod.addStatement("return " + methodCall+";");	
-			
-			//Add Method To PO
-			addMethod(methodPO,pageObject,null,null,null,null);	
-		}	
+		bodyMethod = methodPO.getBody().get();
+		//Node 0 is the commnad
+		//Node 1 is the Locator
+		//Node 2 is the optional value to check			
+		switch(childNodes.get(0).toString()) {
+			case "assertEquals":
+			case "assertThat":							
+				methodPO.setType("String");
+				break;
+			case "assertTrue":
+			case "assertFalse":							
+				methodPO.setType("boolean");
+				break;
+			default:						
+				throw new UnsupportedOperationException("No conversion found for this istruction: " +childNodes.get(0).toString() );					
+		}												
+		MethodCallExpr methodCall = (MethodCallExpr) childNodes.get(1);
+		lastLocator = createWaitForElement((ExpressionStmt) expression,bodyMethod,false);
+		bodyMethod.addStatement("return " + methodCall+";");	
+		
+		//Add Method To PO
+		addMethod(methodPO,pageObject,null,null,null,null);	
+//		}	
 		//Now add the assert in the Main Function	
 		bodyMethod = methodTestSuite.getBody().get();	
 		//Create the statement
@@ -879,42 +892,42 @@ public class TreeDecomposer {
 	private void generateAssertCallBlockStmt(MethodDeclaration methodTestSuite,ClassOrInterfaceDeclaration pageObject,
 			String lastPageVariable,
 			 BlockStmt blockInstruction,List<Node> values,List<NameExpr> argumentsName,
-			 String methodName) {		
+			 String methodName, String lastLocator) {		
 		List<Node> childs = blockInstruction.getChildNodes();
 		BlockStmt bodyMethod;
 		//The first instruction contains the variable declaration
 		ExpressionStmt stmt = (ExpressionStmt) childs.get(0);		
-		VariableDeclarationExpr variableExpr = (VariableDeclarationExpr) stmt.getChildNodes().get(0);
-		VariableDeclarator variable = (VariableDeclarator)variableExpr.getChildNodes().get(0);
+//		VariableDeclarationExpr variableExpr = (VariableDeclarationExpr) stmt.getChildNodes().get(0);
+//		VariableDeclarator variable = (VariableDeclarator)variableExpr.getChildNodes().get(0);
 		//the variable child contains: Type of return value, variable name, operation
 //		MethodCallExpr findElement = (MethodCallExpr) variable.getChildNodes().get(2);
 		//If the method call is something like: driver.findElement(By..).getValue(..) then the first MethodCall is the correct argument
 //		if(findElement.getChildNodes().size()>=3 && findElement.getChildNodes().get(0) instanceof MethodCallExpr) 	
 //				findElement = (MethodCallExpr) findElement.getChildNodes().get(0);
-		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
+//		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
 		
-		if(methodPO==null) {
-			methodPO = new MethodDeclaration() 					
+//		if(methodPO==null) {
+		MethodDeclaration	methodPO = new MethodDeclaration() 					
 					.setName(methodName)
 					.setPublic(true);
-			bodyMethod = methodPO.getBody().get();	
-			Node lastNode = null;
-			for(Node child : childs) {
-				if(child.toString().startsWith("assert")) {					
-					VariableDeclarationExpr variableDeclExp = (VariableDeclarationExpr) lastNode.getChildNodes().get(0);
-					methodPO.setType(variableDeclExp.getElementType());
-					VariableDeclarator variableDecl = (VariableDeclarator)variableDeclExp.getChildNodes().get(0);
-					createWaitForElement((ExpressionStmt) stmt,bodyMethod,false);
-					bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");					
-					addMethod(methodPO,pageObject,values,argumentsName,null,null);						
-				}else {
-					ExpressionStmt expStmt = (ExpressionStmt)child.clone();
-					analyzeMethodArguments(expStmt,values,argumentsName);	
-					bodyMethod.addStatement(expStmt);
-				}
-				lastNode = child;
+		bodyMethod = methodPO.getBody().get();	
+		Node lastNode = null;
+		for(Node child : childs) {
+			if(child.toString().startsWith("assert")) {					
+				VariableDeclarationExpr variableDeclExp = (VariableDeclarationExpr) lastNode.getChildNodes().get(0);
+				methodPO.setType(variableDeclExp.getElementType());
+				VariableDeclarator variableDecl = (VariableDeclarator)variableDeclExp.getChildNodes().get(0);
+				lastLocator = createWaitForElement((ExpressionStmt) stmt,bodyMethod,false);
+				bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");					
+				addMethod(methodPO,pageObject,values,argumentsName,null,null);						
+			}else {
+				ExpressionStmt expStmt = (ExpressionStmt)child.clone();
+				analyzeMethodArguments(expStmt,values,argumentsName);	
+				bodyMethod.addStatement(expStmt);
 			}
+			lastNode = child;
 		}
+//		}
 		String testSuiteMethodcallStmt;
 		bodyMethod = methodPO.getBody().get();
 		Node lastInstruction = childs.get(childs.size()-1);
