@@ -367,7 +367,7 @@ public class TreeDecomposer {
 					//if the method contains a search for an element, then create the statement, it should never be empty because contains at least 1 assert call
 					if(childInstruction.get(0).toString().contains("driver.findElement")) { 
 							generateAssertCallBlockStmt(methodTestSuite,lastPageObject, localFieldDeclaration.get(lastPageObject.getNameAsString()), 
-									 blockInstruction,values,arguments);					
+									 blockInstruction,values,arguments,methodToAddStatement.getNameAsString());					
 					}else { //nothing special with this assert
 						bodyMethod = methodTestSuite.getBody().get();
 						bodyMethod.addStatement(blockInstruction);	
@@ -761,10 +761,10 @@ public class TreeDecomposer {
 		BlockStmt bodyMethod;
 		MethodCallExpr assertCall = (MethodCallExpr) expression.getExpression();		
 		//The first node contains the assert, the second contains the methodCall to the locator
-		MethodCallExpr firstArgumentInvocation = (MethodCallExpr) assertCall.getChildNodes().get(1);
-		MethodCallExpr findElementInvocation = (MethodCallExpr) firstArgumentInvocation.getChildNodes().get(0);
+//		MethodCallExpr firstArgumentInvocation = (MethodCallExpr) assertCall.getChildNodes().get(1);
+//		MethodCallExpr findElementInvocation = (MethodCallExpr) firstArgumentInvocation.getChildNodes().get(0);
 		List<Node> childNodes = assertCall.getChildNodes(); 		
-		MethodDeclaration methodPO = searchGetterInPO(pageObject,findElementInvocation);;
+		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
 		
 		if(methodPO==null) {
 			//create the method PO statement			
@@ -808,10 +808,9 @@ public class TreeDecomposer {
 	 * @param findElementCall
 	 * @return
 	 */
-	private MethodDeclaration searchGetterInPO(ClassOrInterfaceDeclaration pageObject, MethodCallExpr findElementCall) {
-		String generatedName = generateNameForGetterCalls(findElementCall);
+	private MethodDeclaration searchGetterInPO(ClassOrInterfaceDeclaration pageObject, String methodName) {
 		for(MethodDeclaration method : pageObject.findAll(MethodDeclaration.class)) {
-			if(method.getNameAsString().equals(generatedName)) 
+			if(method.getNameAsString().equals(methodName)) 
 				return method;
 		}
 		return null;
@@ -875,10 +874,12 @@ public class TreeDecomposer {
 	 * @param blockInstruction
 	 * @param values
 	 * @param argumentsName
+	 * @param methodName
 	 */
 	private void generateAssertCallBlockStmt(MethodDeclaration methodTestSuite,ClassOrInterfaceDeclaration pageObject,
 			String lastPageVariable,
-			 BlockStmt blockInstruction,List<Node> values,List<NameExpr> argumentsName) {		
+			 BlockStmt blockInstruction,List<Node> values,List<NameExpr> argumentsName,
+			 String methodName) {		
 		List<Node> childs = blockInstruction.getChildNodes();
 		BlockStmt bodyMethod;
 		//The first instruction contains the variable declaration
@@ -886,15 +887,15 @@ public class TreeDecomposer {
 		VariableDeclarationExpr variableExpr = (VariableDeclarationExpr) stmt.getChildNodes().get(0);
 		VariableDeclarator variable = (VariableDeclarator)variableExpr.getChildNodes().get(0);
 		//the variable child contains: Type of return value, variable name, operation
-		MethodCallExpr findElement = (MethodCallExpr) variable.getChildNodes().get(2);
+//		MethodCallExpr findElement = (MethodCallExpr) variable.getChildNodes().get(2);
 		//If the method call is something like: driver.findElement(By..).getValue(..) then the first MethodCall is the correct argument
-		if(findElement.getChildNodes().size()>=3 && findElement.getChildNodes().get(0) instanceof MethodCallExpr) 	
-				findElement = (MethodCallExpr) findElement.getChildNodes().get(0);
-		MethodDeclaration methodPO = searchGetterInPO(pageObject,findElement);
+//		if(findElement.getChildNodes().size()>=3 && findElement.getChildNodes().get(0) instanceof MethodCallExpr) 	
+//				findElement = (MethodCallExpr) findElement.getChildNodes().get(0);
+		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
 		
 		if(methodPO==null) {
 			methodPO = new MethodDeclaration() 					
-					.setName(generateNameForGetterCalls(findElement))
+					.setName(methodName)
 					.setPublic(true);
 			bodyMethod = methodPO.getBody().get();	
 			Node lastNode = null;
