@@ -91,7 +91,7 @@ public class AssessorTool {
         StaticJavaParser.getConfiguration().setSymbolResolver(symbolSolver);
         String fileText = new String();
         for (String line : Files.readString(Path.of(file.getAbsolutePath())).split("\n")) {
-			System.out.println(line);
+//			System.out.println(line);
 			if(line.trim().startsWith("public void") && Character.isDigit(line.trim().split(" ")[2].charAt(0)) ) {
 				line = line.replaceFirst("[0-9]+", "");	
 			}
