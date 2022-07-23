@@ -261,7 +261,7 @@ public class TreeDecomposer {
 			BlockStmt bodyMethod = methodToAddStatement.getBody().get();
 			if(clonedNode instanceof ExpressionStmt) { //2 option, is Assert or normal command
 				
-				if( lastPageObject!=null && ( checkChangeLocator(clonedNode,lastLocatorUsed)|| clonedNode.toString().contains("assert")) ) {
+				if( lastPageObject!=null && checkChangeLocator(clonedNode,lastLocatorUsed) && !clonedNode.toString().contains("assert") ) {
 					//create Wait for element to prevent missing loading on async loading
 					lastLocatorUsed = createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
 					waitForElementFound = true;
@@ -674,7 +674,9 @@ public class TreeDecomposer {
 					throw new UnsupportedOperationException("No conversion found for this istruction: " +childNodes.get(0).toString() );					
 			}												
 			MethodCallExpr methodCall = (MethodCallExpr) childNodes.get(1);
+			createWaitForElement((ExpressionStmt) expression,bodyMethod,false);
 			bodyMethod.addStatement("return " + methodCall+";");	
+			
 			//Add Method To PO
 			addMethod(methodPO,pageObject,null,null);	
 		}	
