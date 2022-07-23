@@ -903,6 +903,7 @@ public class TreeDecomposer {
 					VariableDeclarationExpr variableDeclExp = (VariableDeclarationExpr) lastNode.getChildNodes().get(0);
 					methodPO.setType(variableDeclExp.getElementType());
 					VariableDeclarator variableDecl = (VariableDeclarator)variableDeclExp.getChildNodes().get(0);
+					createWaitForElement((ExpressionStmt) stmt,bodyMethod,false);
 					bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");					
 					addMethod(methodPO,pageObject,values,argumentsName,null,null);						
 				}else {
