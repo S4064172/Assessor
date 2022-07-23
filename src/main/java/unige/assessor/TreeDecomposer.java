@@ -211,7 +211,8 @@ public class TreeDecomposer {
 			Map<String,String> localFieldDeclaration, 
 			List<Node> values, List<NameExpr> arguments,
 			List<Node> innerValues, List<NameExpr> innerArguments,
-			boolean waitForElementFound, boolean isInner
+			boolean waitForElementFound, boolean isInner,
+			String lastLocatorUsed
 			) {
 		
 			if( blockStmt.get().getStatements().size() == 0) {
@@ -234,7 +235,7 @@ public class TreeDecomposer {
 			//we add manually the delimiter backToFather
 			if((delimiterFound!=null || delimiterEnd) && lastPageObject!=null && isInner) {
 				blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_FATHER.replace(";", "")));
-				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, true);
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
 				return;
 			}
 			
@@ -255,12 +256,12 @@ public class TreeDecomposer {
 				//starts the inner generation
 				if(lastPageObject!=null && !delimiterEnd) {
 											
-					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true);
+					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
 					
 					innerValues.addAll(values);
 					innerArguments.addAll(arguments);
 					
-					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false);
+					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,lastLocatorUsed);
 					
 					lastPageObject = null;
 					innerValues = new LinkedList<>();
@@ -302,7 +303,7 @@ public class TreeDecomposer {
 						.setPublic(true);
 					blockStmt.get().remove(node);
 				}
-				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound,isInner);
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 
 				return;
 				
@@ -313,9 +314,9 @@ public class TreeDecomposer {
 			BlockStmt bodyMethod = methodToAddStatement.getBody().get();
 			if(clonedNode instanceof ExpressionStmt) { //2 option, is Assert or normal command
 				
-				if( lastPageObject!=null && !waitForElementFound && clonedNode.toString().contains("click") ) {
+				if( lastPageObject!=null && checkChangeLocator(clonedNode,lastLocatorUsed) && !clonedNode.toString().contains("assert") ) {
 					//create Wait for element to prevent missing loading on async loading
-					createWaitForElement((ExpressionStmt) clonedNode,bodyMethod);
+					lastLocatorUsed = createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
 					waitForElementFound = true;
 				}
 				
@@ -388,7 +389,7 @@ public class TreeDecomposer {
 			}
 			blockStmt.get().remove(node);
 
-			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner);
+			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 			return;
 	}
 		
@@ -416,19 +417,36 @@ public class TreeDecomposer {
 		
 		boolean waitForElementFound = false;
 		boolean isInner = false;
+		String lastLocatorUsed = "";
 
-		analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner);
+		analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 
 	}
 
+
+	private boolean checkChangeLocator(Node node, String lastLocator) {
+		return !node.toString().contains(lastLocator) || lastLocator.equals("");
+	}
 	
-		
-	private void createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod) {
+	private String createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod, boolean waitForElementFound) {
 		Node cloned = instruction.clone().getChildNodes().get(0);
-		MethodCallExpr methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
-		Expression argument = methodCall.getArgument(0);
-		bodyMethod.addStatement("By elem = " + argument.toString() + ";");
+		MethodCallExpr methodCall;
+		Expression argument;
+		if(cloned.toString().contains("assert")) {
+			methodCall = (MethodCallExpr) cloned.getChildNodes().get(1).getChildNodes().get(0);
+			argument = methodCall.getArgument(0);
+		}else {
+			methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
+			argument = methodCall.getArgument(0);
+		}
+		
+		
+		if(!waitForElementFound)
+			bodyMethod.addStatement("By elem = " + argument.toString() + ";");
+		else 
+			bodyMethod.addStatement("elem = " + argument.toString() + ";");
 		bodyMethod.addStatement("MyUtils.WaitForElementLoaded(driver,elem);");
+		return argument.toString();
 	}
 
 	private String createClearCommandBeforeSendKeys(ExpressionStmt instruction) {
@@ -768,7 +786,9 @@ public class TreeDecomposer {
 					throw new UnsupportedOperationException("No conversion found for this istruction: " +childNodes.get(0).toString() );					
 			}												
 			MethodCallExpr methodCall = (MethodCallExpr) childNodes.get(1);
+			createWaitForElement((ExpressionStmt) expression,bodyMethod,false);
 			bodyMethod.addStatement("return " + methodCall+";");	
+			
 			//Add Method To PO
 			addMethod(methodPO,pageObject,null,null,null,null);	
 		}	
