@@ -208,6 +208,8 @@ public class TreeDecomposer {
 		//List for each argument in the Method Declaration
 		List<NameExpr> arguments = new LinkedList<NameExpr>();
 		boolean waitForElementFound = false;
+		String lastLocatorUsed = "";
+		
 		for(Node node : blockStmt.get().getChildNodes()) {
 			
 			Map<String,String> delimiterFound = checkDelimiterInstruction(node);
@@ -259,9 +261,9 @@ public class TreeDecomposer {
 			BlockStmt bodyMethod = methodToAddStatement.getBody().get();
 			if(clonedNode instanceof ExpressionStmt) { //2 option, is Assert or normal command
 				
-				if( lastPageObject!=null && (clonedNode.toString().contains("click") || clonedNode.toString().contains("assert")) ) {
+				if( lastPageObject!=null && ( checkChangeLocator(clonedNode,lastLocatorUsed)|| clonedNode.toString().contains("assert")) ) {
 					//create Wait for element to prevent missing loading on async loading
-					createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
+					lastLocatorUsed = createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
 					waitForElementFound = true;
 				}
 				
@@ -339,7 +341,12 @@ public class TreeDecomposer {
 				
 	}
 
-	private void createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod, boolean waitForElementFound) {
+	
+	private boolean checkChangeLocator(Node node, String lastLocator) {
+		return !node.toString().contains(lastLocator) || lastLocator.equals("");
+	}
+	
+	private String createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod, boolean waitForElementFound) {
 		Node cloned = instruction.clone().getChildNodes().get(0);
 		MethodCallExpr methodCall;
 		Expression argument;
@@ -357,6 +364,7 @@ public class TreeDecomposer {
 		else 
 			bodyMethod.addStatement("elem = " + argument.toString() + ";");
 		bodyMethod.addStatement("MyUtils.WaitForElementLoaded(driver,elem);");
+		return argument.toString();
 	}
 
 	private String createClearCommandBeforeSendKeys(ExpressionStmt instruction) {
