@@ -323,7 +323,7 @@ public class TreeDecomposer {
 			BlockStmt bodyMethod = methodToAddStatement.getBody().get();
 			if(clonedNode instanceof ExpressionStmt) { //2 option, is Assert or normal command
 				
-				if( lastPageObject!=null && checkChangeLocator(clonedNode,lastLocatorUsed) && !clonedNode.toString().contains("assert") ) {
+				if( lastPageObject!=null && checkLocator(clonedNode,lastLocatorUsed) && !clonedNode.toString().contains("assert") ) {
 					//create Wait for element to prevent missing loading on async loading
 					lastLocatorUsed = createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
 					waitForElementFound = true;
@@ -438,14 +438,33 @@ public class TreeDecomposer {
 		boolean waitForElementFound = false;
 		boolean isInner = false;
 		String lastLocatorUsed = "";
-
-		analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,lastLocatorUsed);
+		
+		while(blockStmt.get().getStatements().size() > 0)
+			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 
 	}
 
-
+	private boolean checkLocatorIsPresent(Node node) {
+		return node.toString().contains("By");
+	}
+	
 	private boolean checkChangeLocator(Node node, String lastLocator) {
 		return !node.toString().contains(lastLocator) || lastLocator.equals("");
+	}
+	
+	/* 
+	 * This function is used to check if the wait command must be added
+	 * The checks are:
+	 * 1) check i the locator is changed
+	 * 2) check if the locator is present
+	 * 
+	 *  @param: node
+	 *  @param: lastLocator
+	 *  
+	 */
+	
+	private boolean checkLocator(Node node, String lastLocator) {
+		return checkChangeLocator(node, lastLocator) && checkLocatorIsPresent(node);
 	}
 	
 	private String createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod, boolean waitForElementFound) {
@@ -456,11 +475,15 @@ public class TreeDecomposer {
 			methodCall = (MethodCallExpr) cloned.getChildNodes().get(1).getChildNodes().get(0);
 			argument = methodCall.getArgument(0);
 		}else {
-			methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
-			argument = methodCall.getArgument(0);
-		}
-		
-		
+			//ex: elements = driver.findElements(By.linkText("Sign in"));
+			if (cloned.toString().contains("=")){
+				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0).getChildNodes().get(2);
+				argument = methodCall.getArgument(0);
+			}else {
+				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
+				argument = methodCall.getArgument(0);
+			}
+		}	
 		if(!waitForElementFound)
 			bodyMethod.addStatement("By elem = " + argument.toString() + ";");
 		else 
@@ -894,6 +917,7 @@ public class TreeDecomposer {
 	 * @param values
 	 * @param argumentsName
 	 * @param methodName
+	 * @param lastLocator
 	 */
 	private void generateAssertCallBlockStmt(MethodDeclaration methodTestSuite,ClassOrInterfaceDeclaration pageObject,
 			String lastPageVariable,
@@ -923,12 +947,15 @@ public class TreeDecomposer {
 				VariableDeclarationExpr variableDeclExp = (VariableDeclarationExpr) lastNode.getChildNodes().get(0);
 				methodPO.setType(variableDeclExp.getElementType());
 				VariableDeclarator variableDecl = (VariableDeclarator)variableDeclExp.getChildNodes().get(0);
-				lastLocator = createWaitForElement((ExpressionStmt) stmt,bodyMethod,false);
+				if (checkLocator(child,lastLocator))
+					lastLocator = createWaitForElement((ExpressionStmt) child,bodyMethod,false);
 				bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");					
 				addMethod(methodPO,pageObject,values,argumentsName,null,null);						
 			}else {
 				ExpressionStmt expStmt = (ExpressionStmt)child.clone();
-				analyzeMethodArguments(expStmt,values,argumentsName);	
+				analyzeMethodArguments(expStmt,values,argumentsName);
+				if (checkLocator(child,lastLocator))
+					lastLocator = createWaitForElement((ExpressionStmt) child,bodyMethod,false);
 				bodyMethod.addStatement(expStmt);
 			}
 			lastNode = child;
