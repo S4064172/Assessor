@@ -240,8 +240,18 @@ public class TreeDecomposer {
 				return;
 			}
 			
+			//If we are changing the PO page but we forgot the backToMain, we add it
+			//otherwise the tool instantiates the new object in the wrong place
+			if(delimiterFound != null && lastPageObject != null && !delimiterFound.get("pageObjectName").toString().equals(lastPageObject.getName().toString())) {
+				blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,lastLocatorUsed);
+				return;
+			}
+			
 			if(delimiterFound==null && !delimiterEnd) 
 				delimiterEnd =  _checkDelimiterChildEnd(node);
+		
+			
 			
 			//If we are parsing an inner method and we found an new startDelimiter or a BacktoMain
 			//we add manually the close the inner method
@@ -281,6 +291,7 @@ public class TreeDecomposer {
 						if(lastPageObject != null) {
 							addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);	
 							lastPageObject = null;
+							
 							methodToAddStatement = methodTestSuite;
 							lastLocatorUsed = "";
 						}else {
@@ -392,6 +403,7 @@ public class TreeDecomposer {
 					}	
 					lastPageObject = null;
 					lastLocatorUsed = "";
+					isInner = false;
 					methodToAddStatement = methodTestSuite;
 				}else {					
 					BlockStmt blockParsed = new BlockStmt();
