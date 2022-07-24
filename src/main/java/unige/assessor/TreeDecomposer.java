@@ -398,7 +398,9 @@ public class TreeDecomposer {
 					bodyMethod.addStatement(blockParsed);
 					for(Node child : blockInstruction.getChildNodes()) {
 						ExpressionStmt expStmt = (ExpressionStmt)child.clone();
-						analyzeMethodArguments(expStmt,values,arguments);	
+						analyzeMethodArguments(expStmt,values,arguments);
+						if (checkLocator(child,lastLocatorUsed))
+							lastLocatorUsed = createWaitForElement((ExpressionStmt) expStmt,blockParsed,waitForElementFound);
 						blockParsed.addStatement(expStmt);
 					}					
 				}
@@ -476,7 +478,8 @@ public class TreeDecomposer {
 			argument = methodCall.getArgument(0);
 		}else {
 			//ex: elements = driver.findElements(By.linkText("Sign in"));
-			if (cloned.toString().contains("=")){
+			//ex: dropdown.findElement(By.xpath("//option[. = 'Class1']")).click()
+			if (cloned.toString().split("findElement")[0].contains("=")){
 				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0).getChildNodes().get(2);
 				argument = methodCall.getArgument(0);
 			}else {
