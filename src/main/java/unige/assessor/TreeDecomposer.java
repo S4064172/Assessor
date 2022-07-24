@@ -834,7 +834,10 @@ public class TreeDecomposer {
 		bodyMethod.addStatement("return " + methodCall+";");	
 		
 		//Add Method To PO
-		addMethod(methodPO,pageObject,null,null,null,null);	
+		//If the body of the new method is already present 
+		//I have to use that method
+		methodPO = addMethod(methodPO,pageObject,null,null,null,null);	
+		
 //		}	
 		//Now add the assert in the Main Function	
 		bodyMethod = methodTestSuite.getBody().get();	
@@ -949,8 +952,11 @@ public class TreeDecomposer {
 				VariableDeclarator variableDecl = (VariableDeclarator)variableDeclExp.getChildNodes().get(0);
 				if (checkLocator(child,lastLocator))
 					lastLocator = createWaitForElement((ExpressionStmt) child,bodyMethod,false);
-				bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");					
-				addMethod(methodPO,pageObject,values,argumentsName,null,null);						
+				bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");		
+				//Add Method To PO
+				//If the body of the new method is already present 
+				//I have to use that method
+				methodPO = addMethod(methodPO,pageObject,values,argumentsName,null,null);						
 			}else {
 				ExpressionStmt expStmt = (ExpressionStmt)child.clone();
 				analyzeMethodArguments(expStmt,values,argumentsName);
