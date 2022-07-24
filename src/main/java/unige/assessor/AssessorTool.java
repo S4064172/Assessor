@@ -23,8 +23,8 @@ public class AssessorTool {
 		boolean normalize = false;
 		String poPrefix = "";
 
-		//String inputDir = args[0];
-		String inputDir = "H:/_TESI/_Fase2_SviluppoMigliorie/_MethodRefactoring/ProjcetManagement_Side";
+		String inputDir = args[0];
+		//String inputDir = "H:/_TESI/_Fase2_SviluppoMigliorie/_ValidationStep2/TestGeneratedWithOldAssessor/_SchoolManagment/SchoolManagement_WebbApp/SeleniumIde_Test";
 		String outputDir = inputDir+"/Output/";
 	
 		File[] matchingFiles = searchFilesToAnalyze(inputDir);
