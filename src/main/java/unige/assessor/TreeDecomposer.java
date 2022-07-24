@@ -38,6 +38,7 @@ public class TreeDecomposer {
 	//Delimiter generated from SeleniumIDE Extension
 	private static final String DELIMITER_PO_DECLARATION = "System.out.println(\"{ASSESSOR}";
 	private static final String DELIMITER_BACK_TO_MAIN = DELIMITER_PO_DECLARATION+"backToMain\");";
+	private static final String DELIMITER_BACK_TO_FATHER = DELIMITER_PO_DECLARATION+"backToFather\");";
 	
 	
 	
@@ -174,7 +175,7 @@ public class TreeDecomposer {
 	private void analyzeMethod(MethodDeclaration method) {
 		if("setUp".equals(method.getNameAsString()) || "tearDown".equals(method.getNameAsString())) {
 			//Add the method to the central class without parameter/arguments
-			addMethod(method,centralClass,null,null);			
+			addMethod(method,centralClass,null,null,null,null);			
 		}else {	
 			//Read the body of the statement
 			Optional<BlockStmt> bodyStmt = method.findFirst(BlockStmt.class);			
@@ -189,68 +190,131 @@ public class TreeDecomposer {
 			analyzeInstructionCalls(newMethod,bodyStmt);
 		}		
 	}
-	
-	
-	/** Analyze each instruction, to divide between TestMethod calls and PageObject calls
+		
+	/** Analyze each instruction recursively, to divide between TestMethod calls and PageObject calls and to create the dependency between sub PageObject call
 	 *  
-	 * @param methodTestSuite
-	 * @param blockStmt
+	 * @param methodTestSuite: name of the method under analisys
+	 * @param blockStmt: contain the body of the methos
+	 * @param lastPageObject: hold the last page object found
+	 * @param methodToAddStatement: hold the Method where the statement is added, could be a TestSuite method or a PageObject Method
+	 * @param localFieldDeclaration: found the pageObject name, and in the value the name of the variable
+	 * @param values: list for each values to be called in the method call declaration
+	 * @param arguments: list for each argument in the Method Declaration
+	 * @param innerValues: list for each values to be called in all the inner method call declaration
+	 * @param innerArguments: list for each argument in all the inner the Method Declaration
+	 * @param waitForElementFound: flag is used to understand if is the first wait instruction
+	 * @param isInner: flag is used to understand if is the method is inner or not
+	 * @param lastLocatorUsed: is used to store the last locator 
 	 */
-	private void analyzeInstructionCalls(MethodDeclaration methodTestSuite, Optional<BlockStmt> blockStmt) {
-		//This will hold the last page object found
-		ClassOrInterfaceDeclaration lastPageObject = null;
-		//This will hold the Method where the statement is added, could be a TestSuite method or a PageObject Method
-		MethodDeclaration methodToAddStatement = methodTestSuite;
-		//In the Key we can found the pageObject name, and in the value the name of the variable
-		Map<String,String> localFieldDeclaration = new HashMap<>();
-		//List for each values to be called in the method call declaration
-		List<Node> values = new LinkedList<>();
-		//List for each argument in the Method Declaration
-		List<NameExpr> arguments = new LinkedList<NameExpr>();
-		boolean waitForElementFound = false;
-		for(Node node : blockStmt.get().getChildNodes()) {
+	private void analyzeInstructionCalls_recursive(
+			MethodDeclaration methodTestSuite, Optional<BlockStmt> blockStmt,
+			ClassOrInterfaceDeclaration lastPageObject, MethodDeclaration methodToAddStatement,
+			Map<String,String> localFieldDeclaration, 
+			List<Node> values, List<NameExpr> arguments,
+			List<Node> innerValues, List<NameExpr> innerArguments,
+			boolean waitForElementFound, boolean isInner,
+			String lastLocatorUsed
+			) {
+		
+			if( blockStmt.get().getStatements().size() == 0) {
+				if (lastPageObject != null)
+					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);
+				return;
+			}
+				
+		
+			Node node = blockStmt.get().getStatement(0);
 			
 			Map<String,String> delimiterFound = checkDelimiterInstruction(node);
+			
 			boolean delimiterEnd = false;
 			
 			if(delimiterFound==null) 
 				delimiterEnd = _checkDelimiterEnd(node);
+			
+			//If we are parsing an inner method and we found an new startDelimiter or a BacktoMain
+			//we add manually the delimiter backToFather
+			if((delimiterFound!=null || delimiterEnd) && lastPageObject!=null && isInner) {
+				blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_FATHER.replace(";", "")));
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
+				return;
+			}
+			
+			if(delimiterFound==null && !delimiterEnd) 
+				delimiterEnd =  _checkDelimiterChildEnd(node);
+			
+			//If we are parsing an inner method and we found an new startDelimiter or a BacktoMain
+			//we add manually the close the inner method
+//			if((delimiterFound!=null || delimiterEnd) && lastPageObject!=null && isInner) {
+//				addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, true);	
+//				return;
+//				
+//			}
+					
 			//If there is a delimiter
 			if(delimiterFound!=null || delimiterEnd ) {
-				//if a pageObject is found, the create the pageObject calls
-				if(lastPageObject!=null)
-					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments);					
-
-				//if the instruction is to go back to the write to the main Test Method
-				//clear the lastPageObject and change the method where to add statement
-				if(delimiterEnd) {					
+				//if a pageObject is found, and there isn't the and delimiter
+				//starts the inner generation
+				if(lastPageObject!=null && !delimiterEnd) {
+											
+					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
+					
+					innerValues.addAll(values);
+					innerArguments.addAll(arguments);
+					
+					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,lastLocatorUsed);
+					
 					lastPageObject = null;
-					methodToAddStatement = methodTestSuite;
-					continue;
+					lastLocatorUsed = "";
+					innerValues = new LinkedList<>();
+					innerArguments = new LinkedList<NameExpr>();
+					
+					
+				}else {
+					//if the instruction is to go back to the write to the main Test Method
+					//clear the lastPageObject, the valuesInner, the innerArguments
+					//and change the method where to add statement
+					if(delimiterEnd) {
+						//if lastPageObject is null means that I have
+						//already added the page object
+						blockStmt.get().remove(node);
+						if(lastPageObject != null) {
+							addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);	
+							lastPageObject = null;
+							methodToAddStatement = methodTestSuite;
+							lastLocatorUsed = "";
+						}else {
+							analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,lastLocatorUsed);
+						}
+						return;
+					}
+					waitForElementFound = false;
+					//If a delimiter is found, get the pageObject Name
+					String pageObjectName = delimiterFound.get(KEY_HASH_PO_NAME);
+					//recover the pageObject from the class
+					lastPageObject = getPageObject(pageObjectName);
+					//if the pageObject is not found, then should be created
+					if(lastPageObject==null) 
+						lastPageObject = createPageObject(pageObjectName);
+					//if the local variable inside the TestMethod isn't declared, then the declaration must be added
+					if(!localFieldDeclaration.containsKey(pageObjectName)) {
+						//The value represent the Variable name, using an _ to be better identified inside the code 
+						localFieldDeclaration.put(pageObjectName, "_"+pageObjectName);
+						//The initialization of the PageObject is always formed by the 3 variables driver,var,js 
+						methodTestSuite.getBody().get()
+							.addStatement(pageObjectName+ " "+localFieldDeclaration.get(pageObjectName) +" = new "+pageObjectName+"(driver,js,vars);");
+					}
+					//Now a new void method is created with the PageMethodName.
+					//if the method will need a different return statement, this will be change in a second time
+					methodToAddStatement = new MethodDeclaration() 
+						.setType("void")
+						.setName(delimiterFound.get(KEY_HASH_PO_METHOD))
+						.setPublic(true);
+					blockStmt.get().remove(node);
 				}
-				waitForElementFound = false;
-				//If a delimiter is found, get the pageObject Name
-				String pageObjectName = delimiterFound.get(KEY_HASH_PO_NAME);
-				//recover the pageObject from the class
-				lastPageObject = getPageObject(pageObjectName);
-				//if the pageObject is not found, then should be created
-				if(lastPageObject==null) 
-					lastPageObject = createPageObject(pageObjectName);
-				//if the local variable inside the TestMethod isn't declared, then the declaration must be added
-				if(!localFieldDeclaration.containsKey(pageObjectName)) {
-					//The value represent the Variable name, using an _ to be better identified inside the code 
-					localFieldDeclaration.put(pageObjectName, "_"+pageObjectName);
-					//The initialization of the PageObject is always formed by the 3 variables driver,var,js 
-					methodTestSuite.getBody().get()
-						.addStatement(pageObjectName+ " "+localFieldDeclaration.get(pageObjectName) +" = new "+pageObjectName+"(driver,js,vars);");
-				}
-				//Now a new void method is created with the PageMethodName.
-				//if the method will need a different return statement, this will be change in a second time
-				methodToAddStatement = new MethodDeclaration() 
-					.setType("void")
-					.setName(delimiterFound.get(KEY_HASH_PO_METHOD))
-					.setPublic(true);
-				continue; //Don't add the System.out.println
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
+
+				return;
 				
 			}
 			//Because each node is linked with others node, if the node isn't cloned the program will crash because the structure that holds the node is not modifiable
@@ -259,9 +323,9 @@ public class TreeDecomposer {
 			BlockStmt bodyMethod = methodToAddStatement.getBody().get();
 			if(clonedNode instanceof ExpressionStmt) { //2 option, is Assert or normal command
 				
-				if( lastPageObject!=null && !waitForElementFound && clonedNode.toString().contains("click") ) {
+				if( lastPageObject!=null && checkLocator(clonedNode,lastLocatorUsed) && !clonedNode.toString().contains("assert") ) {
 					//create Wait for element to prevent missing loading on async loading
-					createWaitForElement((ExpressionStmt) clonedNode,bodyMethod);
+					lastLocatorUsed = createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
 					waitForElementFound = true;
 				}
 				
@@ -278,7 +342,13 @@ public class TreeDecomposer {
 				if(expStmt.toString().startsWith("assert") && lastPageObject!=null) {
 				
 					//Add the previews call method, that will return void
-					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments);	
+					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments, innerValues, innerArguments,isInner);	
+					
+					if(isInner) {
+						blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
+						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false ,lastLocatorUsed);
+						return;
+					}
 					
 					//if the method contains a search for an element, then create the statement
 					if(expStmt.toString().contains("driver.findElement")) { 						
@@ -287,13 +357,16 @@ public class TreeDecomposer {
 								lastPageObject,
 								localFieldDeclaration.get(lastPageObject.getNameAsString()), 		
 								expStmt,
-								methodToAddStatement.getNameAsString());
+								methodToAddStatement.getNameAsString(),
+								lastLocatorUsed);
 					}else { //nothing special with this assert
 						bodyMethod = methodTestSuite.getBody().get();
 						bodyMethod.addStatement(expStmt);	
 					}	
 					//Return to write in the main statement as default
 					lastPageObject = null;
+					lastLocatorUsed = "";
+					isInner = false;
 					methodToAddStatement = methodTestSuite;
 				}
 				else { 
@@ -306,18 +379,19 @@ public class TreeDecomposer {
 					bodyMethod.addStatement(blockInstruction);
 				} else if(searchForAssertInBlockStmt(blockInstruction)) {
 					//Add the previews call method, that will return void
-					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments);	
+					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments, innerValues, innerArguments,isInner);	
 					List<Node> childInstruction = blockInstruction.getChildNodes();
 					
 					//if the method contains a search for an element, then create the statement, it should never be empty because contains at least 1 assert call
 					if(childInstruction.get(0).toString().contains("driver.findElement")) { 
 							generateAssertCallBlockStmt(methodTestSuite,lastPageObject, localFieldDeclaration.get(lastPageObject.getNameAsString()), 
-									 blockInstruction,values,arguments,methodToAddStatement.getNameAsString());					
+									 blockInstruction,values,arguments,methodToAddStatement.getNameAsString(),lastLocatorUsed);					
 					}else { //nothing special with this assert
 						bodyMethod = methodTestSuite.getBody().get();
 						bodyMethod.addStatement(blockInstruction);	
 					}	
 					lastPageObject = null;
+					lastLocatorUsed = "";
 					methodToAddStatement = methodTestSuite;
 				}else {					
 					BlockStmt blockParsed = new BlockStmt();
@@ -333,19 +407,89 @@ public class TreeDecomposer {
 			}else { 
 				bodyMethod.addStatement((Statement) clonedNode);
 			}
-		}
-		//after all the instruction end, if there is a PageObject declared then add his MethodCallDeclaration to the TestSuite Method
-		if(lastPageObject!=null)				
-			addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments);					
-				
+			blockStmt.get().remove(node);
+
+			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
+			return;
+	}
+		
+	/** Analyze each instruction, to divide between TestMethod calls and PageObject calls
+	 *  
+	 * @param methodTestSuite: name of the method under analisys
+	 * @param blockStmt: contain the body of the methos
+	 */
+	private void analyzeInstructionCalls(MethodDeclaration methodTestSuite, Optional<BlockStmt> blockStmt) {
+		
+		//This will hold the last page object found
+		ClassOrInterfaceDeclaration lastPageObject = null;
+		//This will hold the Method where the statement is added, could be a TestSuite method or a PageObject Method
+		MethodDeclaration methodToAddStatement = methodTestSuite;
+		//In the Key we can found the pageObject name, and in the value the name of the variable
+		Map<String,String> localFieldDeclaration = new HashMap<>();
+		//List for each values to be called in the method call declaration
+		List<Node> values = new LinkedList<>();
+		//List for each argument in the Method Declaration
+		List<NameExpr> arguments = new LinkedList<NameExpr>();
+		//List for each values to be called in all the inner method call declaration
+		List<Node> innerValues = new LinkedList<>();
+		//List for each argument in all the inner the Method Declaration
+		List<NameExpr> innerArguments = new LinkedList<NameExpr>();
+		
+		boolean waitForElementFound = false;
+		boolean isInner = false;
+		String lastLocatorUsed = "";
+		
+		while(blockStmt.get().getStatements().size() > 0)
+			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,lastLocatorUsed);
+
 	}
 
-	private void createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod) {
+	private boolean checkLocatorIsPresent(Node node) {
+		return node.toString().contains("By");
+	}
+	
+	private boolean checkChangeLocator(Node node, String lastLocator) {
+		return !node.toString().contains(lastLocator) || lastLocator.equals("");
+	}
+	
+	/* 
+	 * This function is used to check if the wait command must be added
+	 * The checks are:
+	 * 1) check i the locator is changed
+	 * 2) check if the locator is present
+	 * 
+	 *  @param: node
+	 *  @param: lastLocator
+	 *  
+	 */
+	
+	private boolean checkLocator(Node node, String lastLocator) {
+		return checkChangeLocator(node, lastLocator) && checkLocatorIsPresent(node);
+	}
+	
+	private String createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod, boolean waitForElementFound) {
 		Node cloned = instruction.clone().getChildNodes().get(0);
-		MethodCallExpr methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
-		Expression argument = methodCall.getArgument(0);
-		bodyMethod.addStatement("By elem = " + argument.toString() + ";");
+		MethodCallExpr methodCall;
+		Expression argument;
+		if(cloned.toString().contains("assert")) {
+			methodCall = (MethodCallExpr) cloned.getChildNodes().get(1).getChildNodes().get(0);
+			argument = methodCall.getArgument(0);
+		}else {
+			//ex: elements = driver.findElements(By.linkText("Sign in"));
+			if (cloned.toString().contains("=")){
+				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0).getChildNodes().get(2);
+				argument = methodCall.getArgument(0);
+			}else {
+				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
+				argument = methodCall.getArgument(0);
+			}
+		}	
+		if(!waitForElementFound)
+			bodyMethod.addStatement("By elem = " + argument.toString() + ";");
+		else 
+			bodyMethod.addStatement("elem = " + argument.toString() + ";");
 		bodyMethod.addStatement("MyUtils.WaitForElementLoaded(driver,elem);");
+		return argument.toString();
 	}
 
 	private String createClearCommandBeforeSendKeys(ExpressionStmt instruction) {
@@ -383,20 +527,32 @@ public class TreeDecomposer {
 	 * @param pageObjectVariable
 	 * @param values
 	 * @param argument
+	 * @param innerValues: list for each values to be called in all the inner method call declaration
+	 * @param innerArguments: list for each argument in all the inner the Method Declaration
 	 */
-	private void addPageObjectCall(MethodDeclaration methodTestSuite, ClassOrInterfaceDeclaration pageObject,
+	private void addPageObjectCall(
+			MethodDeclaration methodTestSuite, ClassOrInterfaceDeclaration pageObject,
 			MethodDeclaration methodPO, String pageObjectVariable,
-			List<Node> values, 
-			List<NameExpr> argument) {	
-		
+			List<Node> values, List<NameExpr> arguments,
+			List<Node> innerValues, List<NameExpr> innerArguments,
+			boolean isInner) {	
 		if(methodPO.getBody().get().getChildNodes().size()==0) { //No instruction found
 			addWarning("The method declaration " +methodPO.getNameAsString() +" in the pageObject: "+pageObject.getNameAsString() + " is empty. So it will be discharged" );			
 		}else {
-			MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,argument);
-			addCallToMethod(pageObjectVariable,methodTestSuite,methodAdded,values);
+			if(isInner) {
+				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,innerValues, innerArguments);
+				addCallToMethod("",methodTestSuite,methodAdded,values,arguments, innerValues, innerArguments,isInner);
+			} else {
+				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,null, null);
+				addCallToMethod(pageObjectVariable,methodTestSuite,methodAdded,values,arguments, null, null,isInner);
+			}
+							
 		}
-		values.clear();
-		argument.clear();
+		if(!isInner) {
+			values.clear();
+			arguments.clear();
+		}
+			
 	}
 
 
@@ -452,10 +608,21 @@ public class TreeDecomposer {
 	 * @param methodWhoCalls
 	 * @param methodToCall
 	 * @param values
-	 */
-	private void addCallToMethod(String variableName, MethodDeclaration methodWhoCalls, MethodDeclaration methodToCall,List<Node> values) {
-		String statement = variableName+"."+methodToCall.getNameAsString()+"(";
-		statement+= argumentParser(values);
+	 * @param innerValues: list for each values to be called in all the inner method call declaration
+	 * @param innerArguments: list for each argument in all the inner the Method Declaration
+	 */	
+	private void addCallToMethod(String variableName, MethodDeclaration methodWhoCalls, MethodDeclaration methodToCall,
+			List<Node> values,List<NameExpr> arguments, 
+			List<Node> innerValues, List<NameExpr> innerArguments,
+			boolean isInner) {
+		String statement = variableName;
+		if(isInner) {
+			statement+= methodToCall.getNameAsString()+"(";
+			statement+= argumentParser(arguments,innerArguments);
+		}else {
+			statement+= "."+methodToCall.getNameAsString()+"(";
+			statement+= argumentParser(values,innerValues);
+		}
 		statement+=");";		
 		methodWhoCalls.getBody().get().addStatement(statement);		
 	}
@@ -533,8 +700,10 @@ public class TreeDecomposer {
  	 * @param argName
  	 * @return
  	 */
-	private MethodDeclaration addMethod(MethodDeclaration methodToAdd, ClassOrInterfaceDeclaration addToClass,List<Node> argTypes, List<NameExpr> argName) {
-		methodAddArguments(methodToAdd,argTypes,argName);
+	private MethodDeclaration addMethod(MethodDeclaration methodToAdd, ClassOrInterfaceDeclaration addToClass,
+			List<Node> argTypes, List<NameExpr> argName,
+			List<Node> argTypesInner, List<NameExpr> argNameInner) {
+		methodAddArguments(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
 		MethodDeclaration alreadyInMethod = getMethodAlreadyIn(methodToAdd,addToClass);
 		if(alreadyInMethod!=null)
 			return alreadyInMethod;
@@ -558,15 +727,20 @@ public class TreeDecomposer {
 	 * @param argTypes
 	 * @param argName
 	 */
-	private void methodAddArguments(MethodDeclaration method, List<Node> argTypes, List<NameExpr> argName) {
+	private void methodAddArguments(MethodDeclaration method, List<Node> argTypes,
+			List<NameExpr> argName, List<Node> argTypesInner, 
+			List<NameExpr> argNameInner) {
 		if(argTypes==null) return;
 		for(int i=0;i<argTypes.size();i++) {
 			//Node value = argTypes.get(i); //if i want to parse other type of Input
-			NameExpr nameVariable = argName.get(i);
-			Parameter parameter = new Parameter();
-			parameter.setType("String");		
-			parameter.setName(nameVariable.toString());
-			method.addParameter(parameter);
+			if(argTypesInner == null || !contains(argNameInner, argName.get(i).toString())) {
+				NameExpr nameVariable = argName.get(i);
+				Parameter parameter = new Parameter();
+				parameter.setType("String");		
+				parameter.setName(nameVariable.toString());
+				method.addParameter(parameter);
+			}
+			
 		}
 	}
 
@@ -625,41 +799,43 @@ public class TreeDecomposer {
 	 */
 	private void analyzeAssertCallExpStmt(
 			MethodDeclaration methodTestSuite, ClassOrInterfaceDeclaration pageObject, String pageObjectVariable,
-			ExpressionStmt expression, String methodName) {	
+			ExpressionStmt expression, String methodName, String lastLocator) {	
 		BlockStmt bodyMethod;
 		MethodCallExpr assertCall = (MethodCallExpr) expression.getExpression();		
 		//The first node contains the assert, the second contains the methodCall to the locator
 //		MethodCallExpr firstArgumentInvocation = (MethodCallExpr) assertCall.getChildNodes().get(1);
 //		MethodCallExpr findElementInvocation = (MethodCallExpr) firstArgumentInvocation.getChildNodes().get(0);
 		List<Node> childNodes = assertCall.getChildNodes(); 		
-		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
+//		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
 		
-		if(methodPO==null) {
+//		if(methodPO==null) {
 			//create the method PO statement			
-			methodPO = new MethodDeclaration() 					
+		MethodDeclaration methodPO = new MethodDeclaration() 					
 					.setName(methodName)
 					.setPublic(true);
-			bodyMethod = methodPO.getBody().get();
-			//Node 0 is the commnad
-			//Node 1 is the Locator
-			//Node 2 is the optional value to check			
-			switch(childNodes.get(0).toString()) {
-				case "assertEquals":
-				case "assertThat":							
-					methodPO.setType("String");
-					break;
-				case "assertTrue":
-				case "assertFalse":							
-					methodPO.setType("boolean");
-					break;
-				default:						
-					throw new UnsupportedOperationException("No conversion found for this istruction: " +childNodes.get(0).toString() );					
-			}												
-			MethodCallExpr methodCall = (MethodCallExpr) childNodes.get(1);
-			bodyMethod.addStatement("return " + methodCall+";");	
-			//Add Method To PO
-			addMethod(methodPO,pageObject,null,null);	
-		}	
+		bodyMethod = methodPO.getBody().get();
+		//Node 0 is the commnad
+		//Node 1 is the Locator
+		//Node 2 is the optional value to check			
+		switch(childNodes.get(0).toString()) {
+			case "assertEquals":
+			case "assertThat":							
+				methodPO.setType("String");
+				break;
+			case "assertTrue":
+			case "assertFalse":							
+				methodPO.setType("boolean");
+				break;
+			default:						
+				throw new UnsupportedOperationException("No conversion found for this istruction: " +childNodes.get(0).toString() );					
+		}												
+		MethodCallExpr methodCall = (MethodCallExpr) childNodes.get(1);
+		lastLocator = createWaitForElement((ExpressionStmt) expression,bodyMethod,false);
+		bodyMethod.addStatement("return " + methodCall+";");	
+		
+		//Add Method To PO
+		addMethod(methodPO,pageObject,null,null,null,null);	
+//		}	
 		//Now add the assert in the Main Function	
 		bodyMethod = methodTestSuite.getBody().get();	
 		//Create the statement
@@ -741,45 +917,50 @@ public class TreeDecomposer {
 	 * @param values
 	 * @param argumentsName
 	 * @param methodName
+	 * @param lastLocator
 	 */
 	private void generateAssertCallBlockStmt(MethodDeclaration methodTestSuite,ClassOrInterfaceDeclaration pageObject,
 			String lastPageVariable,
 			 BlockStmt blockInstruction,List<Node> values,List<NameExpr> argumentsName,
-			 String methodName) {		
+			 String methodName, String lastLocator) {		
 		List<Node> childs = blockInstruction.getChildNodes();
 		BlockStmt bodyMethod;
 		//The first instruction contains the variable declaration
 		ExpressionStmt stmt = (ExpressionStmt) childs.get(0);		
-		VariableDeclarationExpr variableExpr = (VariableDeclarationExpr) stmt.getChildNodes().get(0);
-		VariableDeclarator variable = (VariableDeclarator)variableExpr.getChildNodes().get(0);
+//		VariableDeclarationExpr variableExpr = (VariableDeclarationExpr) stmt.getChildNodes().get(0);
+//		VariableDeclarator variable = (VariableDeclarator)variableExpr.getChildNodes().get(0);
 		//the variable child contains: Type of return value, variable name, operation
 //		MethodCallExpr findElement = (MethodCallExpr) variable.getChildNodes().get(2);
 		//If the method call is something like: driver.findElement(By..).getValue(..) then the first MethodCall is the correct argument
 //		if(findElement.getChildNodes().size()>=3 && findElement.getChildNodes().get(0) instanceof MethodCallExpr) 	
 //				findElement = (MethodCallExpr) findElement.getChildNodes().get(0);
-		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
+//		MethodDeclaration methodPO = searchGetterInPO(pageObject,methodName);
 		
-		if(methodPO==null) {
-			methodPO = new MethodDeclaration() 					
+//		if(methodPO==null) {
+		MethodDeclaration	methodPO = new MethodDeclaration() 					
 					.setName(methodName)
 					.setPublic(true);
-			bodyMethod = methodPO.getBody().get();	
-			Node lastNode = null;
-			for(Node child : childs) {
-				if(child.toString().startsWith("assert")) {					
-					VariableDeclarationExpr variableDeclExp = (VariableDeclarationExpr) lastNode.getChildNodes().get(0);
-					methodPO.setType(variableDeclExp.getElementType());
-					VariableDeclarator variableDecl = (VariableDeclarator)variableDeclExp.getChildNodes().get(0);
-					bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");					
-					addMethod(methodPO,pageObject,values,argumentsName);						
-				}else {
-					ExpressionStmt expStmt = (ExpressionStmt)child.clone();
-					analyzeMethodArguments(expStmt,values,argumentsName);	
-					bodyMethod.addStatement(expStmt);
-				}
-				lastNode = child;
+		bodyMethod = methodPO.getBody().get();	
+		Node lastNode = null;
+		for(Node child : childs) {
+			if(child.toString().startsWith("assert")) {					
+				VariableDeclarationExpr variableDeclExp = (VariableDeclarationExpr) lastNode.getChildNodes().get(0);
+				methodPO.setType(variableDeclExp.getElementType());
+				VariableDeclarator variableDecl = (VariableDeclarator)variableDeclExp.getChildNodes().get(0);
+				if (checkLocator(child,lastLocator))
+					lastLocator = createWaitForElement((ExpressionStmt) child,bodyMethod,false);
+				bodyMethod.addStatement("return " +variableDecl.getNameAsString()+";");					
+				addMethod(methodPO,pageObject,values,argumentsName,null,null);						
+			}else {
+				ExpressionStmt expStmt = (ExpressionStmt)child.clone();
+				analyzeMethodArguments(expStmt,values,argumentsName);
+				if (checkLocator(child,lastLocator))
+					lastLocator = createWaitForElement((ExpressionStmt) child,bodyMethod,false);
+				bodyMethod.addStatement(expStmt);
 			}
+			lastNode = child;
 		}
+//		}
 		String testSuiteMethodcallStmt;
 		bodyMethod = methodPO.getBody().get();
 		Node lastInstruction = childs.get(childs.size()-1);
@@ -810,7 +991,7 @@ public class TreeDecomposer {
 	private String createAssertWithNormalStmt(List<Node> childNodes,String lastPageVariable, MethodDeclaration methodPO, List<Node> values) {
 		String statement = childNodes.get(0).toString() +"(";		
 		statement+=lastPageVariable+"."+methodPO.getNameAsString()+"(";
-		statement+=argumentParser(values);	
+		statement+=argumentParser(values, null);	
 		statement+=")";
 		for(int i=2;i<childNodes.size();i++)
 			statement+=","+childNodes.get(i);					
@@ -835,7 +1016,7 @@ public class TreeDecomposer {
 		BinaryExpr binaryExpr = (BinaryExpr) enclosedExp.getChildNodes().get(0);
 		statement = "assert("; 					
 		statement+=lastPageVariable+"."+methodPO.getNameAsString()+"(";
-		statement+=argumentParser(values);					
+		statement+=argumentParser(values,null);					
 		statement+=")";
 		statement+= binaryExpr.getLeft().toString().replaceFirst(variableDecl.getNameAsString(), "");
 		statement+=" "+binaryExpr.getOperator().asString()+" "+binaryExpr.getRight()+");";
@@ -849,6 +1030,10 @@ public class TreeDecomposer {
 	 */
 	private boolean _checkDelimiterEnd(Node exp) {
 		return DELIMITER_BACK_TO_MAIN.equals(exp.toString()); 
+	}
+	
+	private boolean _checkDelimiterChildEnd(Node exp) {
+		return DELIMITER_BACK_TO_FATHER.equals(exp.toString()); 
 	}
 	
 	/** Check if the instruction is a System.out.println(\"{SeleniumIDEExt} Delimiter
@@ -883,19 +1068,34 @@ public class TreeDecomposer {
 	
 	/** Argument Analyzer */
 	
+	/** This method check of the value is contained in the  inner list
+	 * 
+	 * @param inner
+	 * @param val
+	 * @return true or false
+	 */
+	private boolean contains(List<?> inner, String val) {
+		for (Object object : inner) {
+			if(val.equals(object.toString())) 
+				return true;
+		}
+		return false;
+	}
+	
 	/** This method will create a String with all the argument to use to call a Mehtod
 	 * 
 	 * @param values
+	 * @param innert
 	 * @return "" or a string of arguments call
 	 */
-	private String argumentParser(List<Node> values) {
-		String statement = "";
+	private String argumentParser(List<?> values, List<?> inner) {
+		List<String> statemens = new LinkedList<String>();
 		if(values!=null && values.size()>0) {
-			statement+=values.get(0).toString();
-			for(int i=1;i<values.size();i++) 
-				statement+=","+values.get(i).toString();			
+			for(int i=0;i<values.size();i++) 
+				if(inner == null || !contains(inner,values.get(i).toString()))
+					statemens.add(values.get(i).toString());					
 		}		
-		return statement;
+		return String.join(",", statemens);
 	}
 
 
