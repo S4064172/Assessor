@@ -481,24 +481,47 @@ public class TreeDecomposer {
 		return checkChangeLocator(node, lastLocator) && checkLocatorIsPresent(node);
 	}
 	
+		
+	private MethodCallExpr findByInstruction(List<Node> exp) {
+		//ex: elements = driver.findElements(By.linkText("Sign in"));
+		//ex: dropdown.findElement(By.xpath("//option[. = 'Class1']")).click()
+		//ex: vars.put("before", driver.findElement(By.cssSelector(".hidden-xs > .text-primary")).getText());
+		if (exp.get(0).toString().split("findElement")[0].contains("="))
+			exp = exp.get(0).getChildNodes();
+		
+		for (Node node : exp) {
+			if( node.toString().contains("By") )
+				return (MethodCallExpr) node;
+		}
+		return null;
+	}
+	
+	private Expression findArgument(MethodCallExpr methodCall) {
+		MethodCallExpr clone = methodCall;
+				
+		while (clone.getArguments().size() == 0) {
+			clone = (MethodCallExpr) clone.getChildNodes().get(0);
+		}
+		
+		return  clone.getArgument(0);
+	}
+	
 	private String createWaitForElement(ExpressionStmt instruction, BlockStmt bodyMethod, boolean waitForElementFound) {
 		Node cloned = instruction.clone().getChildNodes().get(0);
 		MethodCallExpr methodCall;
 		Expression argument;
-		if(cloned.toString().contains("assert")) {
-			methodCall = (MethodCallExpr) cloned.getChildNodes().get(1).getChildNodes().get(0);
-			argument = methodCall.getArgument(0);
-		}else {
-			//ex: elements = driver.findElements(By.linkText("Sign in"));
-			//ex: dropdown.findElement(By.xpath("//option[. = 'Class1']")).click()
-			if (cloned.toString().split("findElement")[0].contains("=")){
-				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0).getChildNodes().get(2);
-				argument = methodCall.getArgument(0);
-			}else {
-				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0);
-				argument = methodCall.getArgument(0);
-			}
-		}	
+//		if(cloned.toString().contains("assert")) {
+//			System.err.println(findByInstruction(cloned));
+//			methodCall = (MethodCallExpr) cloned.getChildNodes().get(1).getChildNodes().get(0);	
+//		}else {
+//			if (cloned.toString().split("findElement")[0].contains("=")){
+//				methodCall = (MethodCallExpr) cloned.getChildNodes().get(0).getChildNodes().get(2);
+//			}else {
+//				methodCall = findByInstruction(cloned);
+//			}
+//		}	
+		methodCall = findByInstruction(cloned.getChildNodes());
+		argument = findArgument(methodCall);
 		if(!waitForElementFound)
 			bodyMethod.addStatement("By elem = " + argument.toString() + ";");
 		else 
