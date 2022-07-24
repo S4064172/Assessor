@@ -277,16 +277,15 @@ public class TreeDecomposer {
 					if(delimiterEnd) {
 						//if lastPageObject is null means that I have
 						//already added the page object
+						blockStmt.get().remove(node);
 						if(lastPageObject != null) {
 							addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);	
 							lastPageObject = null;
 							methodToAddStatement = methodTestSuite;
 							lastLocatorUsed = "";
+						}else {
+							analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,lastLocatorUsed);
 						}
-						
-						blockStmt.get().remove(node);
-						
-						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 						return;
 					}
 					waitForElementFound = false;
@@ -345,6 +344,12 @@ public class TreeDecomposer {
 					//Add the previews call method, that will return void
 					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments, innerValues, innerArguments,isInner);	
 					
+					if(isInner) {
+						blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
+						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false ,lastLocatorUsed);
+						return;
+					}
+					
 					//if the method contains a search for an element, then create the statement
 					if(expStmt.toString().contains("driver.findElement")) { 						
 						analyzeAssertCallExpStmt(
@@ -361,6 +366,7 @@ public class TreeDecomposer {
 					//Return to write in the main statement as default
 					lastPageObject = null;
 					lastLocatorUsed = "";
+					isInner = false;
 					methodToAddStatement = methodTestSuite;
 				}
 				else { 
