@@ -175,7 +175,7 @@ public class TreeDecomposer {
 	private void analyzeMethod(MethodDeclaration method) {
 		if("setUp".equals(method.getNameAsString()) || "tearDown".equals(method.getNameAsString())) {
 			//Add the method to the central class without parameter/arguments
-			addMethod(method,centralClass,null,null,null,null);			
+			addMethod(method,centralClass,null,null,null,null,null);			
 		}else {	
 			//Read the body of the statement
 			Optional<BlockStmt> bodyStmt = method.findFirst(BlockStmt.class);			
@@ -578,10 +578,10 @@ public class TreeDecomposer {
 			addWarning("The method declaration " +methodPO.getNameAsString() +" in the pageObject: "+pageObject.getNameAsString() + " is empty. So it will be discharged" );			
 		}else {
 			if(isInner) {
-				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,innerValues, innerArguments);
+				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,innerValues, innerArguments,methodTestSuite);
 				addCallToMethod("",methodTestSuite,methodAdded,values,arguments, innerValues, innerArguments,isInner);
 			} else {
-				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,null, null);
+				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,null, null,methodTestSuite);
 				addCallToMethod(pageObjectVariable,methodTestSuite,methodAdded,values,arguments, null, null,isInner);
 			}
 							
@@ -740,11 +740,19 @@ public class TreeDecomposer {
  	 */
 	private MethodDeclaration addMethod(MethodDeclaration methodToAdd, ClassOrInterfaceDeclaration addToClass,
 			List<Node> argTypes, List<NameExpr> argName,
-			List<Node> argTypesInner, List<NameExpr> argNameInner) {
+			List<Node> argTypesInner, List<NameExpr> argNameInner,
+			MethodDeclaration methodTestSuite) {
 		methodAddArguments(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
 		MethodDeclaration alreadyInMethod = getMethodAlreadyIn(methodToAdd,addToClass);
+		
 		if(alreadyInMethod!=null)
 			return alreadyInMethod;
+		
+		alreadyInMethod = getClusteredMethod(methodToAdd,addToClass,argTypes,argName,methodTestSuite);
+		
+		if(alreadyInMethod!=null)
+			return alreadyInMethod;
+		
 		int index = 1;
 		String baseMethodName = methodToAdd.getNameAsString();
 		while(methodSameName(methodToAdd,addToClass)) {
@@ -812,6 +820,65 @@ public class TreeDecomposer {
 		return null;
 	}
 	
+	private MethodDeclaration getClusteredMethod(
+			MethodDeclaration methodToSearch, ClassOrInterfaceDeclaration classToSearch,
+			List<Node> argTypes, List<NameExpr> argName,
+			MethodDeclaration methodTestSuite
+			) {
+		List<MethodDeclaration> methods = classToSearch.findAll(MethodDeclaration.class);
+		MethodDeclaration clusteredMethod = null;
+		for(MethodDeclaration method : methods) { 
+			if (method.getNameAsString().equals(methodToSearch.getNameAsString())) {
+				clusteredMethod = method;
+				break;
+			}
+		}
+		
+		if (clusteredMethod == null)
+			return null;
+		
+		int clusteredMethodParamiters = clusteredMethod.getParameters().size();
+		int index = 0;
+		
+		while (index < clusteredMethodParamiters) {
+			argTypes.add(0,new NameExpr("null"));
+			index ++;
+		}
+		
+		for (Parameter methodDeclaration : methodToSearch.getParameters()) {
+			methodDeclaration.setName(new SimpleName("key"+(clusteredMethod.getParameters().size() + 1)));
+			clusteredMethod.addParameter(methodDeclaration);
+		}
+		
+//		argName = clusteredMethod.getParameters().;
+		
+		for (Statement methodDeclaration : methodToSearch.getBody().get().getStatements()) {
+			List<NameExpr> expr = methodDeclaration.findAll(NameExpr.class);
+			expr.get(0).setName(new SimpleName("key2"));
+			clusteredMethod.getBody().get().addStatement(methodDeclaration);
+		}
+		Node test0 =  methodTestSuite.getParentNode().get();
+		List<MethodDeclaration> test1 = test0.findAll(MethodDeclaration.class);
+		for (MethodDeclaration methodDeclaration : test1) {
+			List<ExpressionStmt> test2 = methodDeclaration.findAll(ExpressionStmt.class);
+			for (ExpressionStmt methodDeclaration2 : test2) {
+				if (methodDeclaration2.toString().contains(methodToSearch.getNameAsString())) {
+					System.err.println(methodDeclaration2);
+					List<MethodCallExpr> test4 = methodDeclaration2.findAll(MethodCallExpr.class);
+					test4.get(0).addArgument(new NameExpr("null"));
+					System.err.println(test4);
+				}
+					
+			}
+			
+		}
+		
+		
+//		for()
+		
+		return clusteredMethod;
+	}
+	
 	/** This will check if there is a method with the same name
 	 * It doens't check if the method is the same or anything else but just if there is a same method name 
 	 * @param methodToAdd
@@ -874,7 +941,7 @@ public class TreeDecomposer {
 		//Add Method To PO
 		//If the body of the new method is already present 
 		//I have to use that method
-		methodPO = addMethod(methodPO,pageObject,null,null,null,null);	
+		methodPO = addMethod(methodPO,pageObject,null,null,null,null,null);	
 		
 //		}	
 		//Now add the assert in the Main Function	
@@ -994,7 +1061,7 @@ public class TreeDecomposer {
 				//Add Method To PO
 				//If the body of the new method is already present 
 				//I have to use that method
-				methodPO = addMethod(methodPO,pageObject,values,argumentsName,null,null);						
+				methodPO = addMethod(methodPO,pageObject,values,argumentsName,null,null,null);						
 			}else {
 				ExpressionStmt expStmt = (ExpressionStmt)child.clone();
 				analyzeMethodArguments(expStmt,values,argumentsName);
