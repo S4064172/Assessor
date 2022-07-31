@@ -825,13 +825,26 @@ public class TreeDecomposer {
 		return null;
 	}
 	
+	/**This function is used to cluster the PO-method that have the same name
+	 * Once we found a po-method with the same name, we union the two po-method and 
+	 * reorganize the parameters of the two methods
+	 * 
+	 * @param methodToSearch 
+	 * @param classToSearch
+	 * @param argTypes
+	 * @param argName
+	 * @param methodTestSuite
+	 * @return clusteredMethod
+	 */
 	private MethodDeclaration getClusteredMethod(
 			MethodDeclaration methodToSearch, ClassOrInterfaceDeclaration classToSearch,
 			List<Node> argTypes, List<NameExpr> argName,
 			MethodDeclaration methodTestSuite
 			) {
-		List<MethodDeclaration> methods = classToSearch.findAll(MethodDeclaration.class);
 		MethodDeclaration clusteredMethod = null;
+		
+		//Search a method in the same class with the same name
+		List<MethodDeclaration> methods = classToSearch.findAll(MethodDeclaration.class);
 		for(MethodDeclaration method : methods) { 
 			if (method.getNameAsString().equals(methodToSearch.getNameAsString())) {
 				clusteredMethod = method;
@@ -842,86 +855,74 @@ public class TreeDecomposer {
 		if (clusteredMethod == null)
 			return null;
 	
+		
+		
+		
+		
+		//is used to store the new parameters order
 		List<Node> newArgs = new LinkedList<Node>();
-		int clusteredMethodParamiters = clusteredMethod.getParameters().size();
-		int addedParams = 1;
-		
-		
-		/*Inizializzazione lista*/
 		for (Parameter param : clusteredMethod.getParameters()) {
 			newArgs.add(new NameExpr("null"));
 		}
 		
-		/*Faccio il clustering*/
+		//Perform the cluster between the method
+		int clusteredMethodParamiters = clusteredMethod.getParameters().size();
+		//used to update the name of the parameters
+		int addedParams = 1;
+		
 		int index = 0;
+		
 		for (Statement methodDeclaration : methodToSearch.getBody().get().getStatements()) {
-			System.err.println(methodDeclaration);
+			//If there is a common statement I have to update only the newArgs list
 			if(!clusteredMethod.getBody().get().getStatements().contains(methodDeclaration)) {
+				
 				List<NameExpr> expr = methodDeclaration.findAll(NameExpr.class);
 				for (NameExpr exp : expr) {
 					Parameter result = null;
-					/*Cerco il parametro da aggiungere al cluster*/
+					//Retrieve the type of the new argument
 					for (Parameter param : methodToSearch.getParameters()) {
 						if (param.toString().endsWith(exp.toString()))
 							result = param;
 					}
-					/*Cambio nome*/
+					//change the name
 					exp.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
 					result.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
+					
 					clusteredMethod.addParameter(result);
-					System.err.println(methodDeclaration);
-					System.err.println(exp);
-					System.err.println(result);
+					newArgs.add(argTypes.get(index));
+					
 					addedParams ++;
+					index++;
 				}
 				clusteredMethod.getBody().get().addStatement(methodDeclaration);
-				newArgs.add(argTypes.get(index));
 				
 			}else {
 				newArgs.set(index, argTypes.get(index));
+				index++;
 			}
-			index++;
-		
+			
 		}
 		
-		System.err.println(argTypes);
+		//Update the argsType list
 		for(int i = 0; i < newArgs.size(); i++) {
-			if(i<argName.size())
+			if(i<argTypes.size())
 				argTypes.set(i, newArgs.get(i));
 			else
 				argTypes.add(newArgs.get(i));
 		}
-		System.err.println(argTypes);
 		
-		System.err.println("------------------------------------------------------------");
-		//Agggiorna il test case
-		List<MethodCallExpr> test4 = methodTestSuite.getParentNode().get().findAll(MethodCallExpr.class);
-		for (MethodCallExpr methodCallExpr : test4) {
+		
+		//Update the usage of the cluster method in all the tests
+		List<MethodCallExpr> methodList = methodTestSuite.getParentNode().get().findAll(MethodCallExpr.class);
+		for (MethodCallExpr methodCallExpr : methodList) {
 			if (methodCallExpr.toString().contains(methodToSearch.getNameAsString())) {
 				while (clusteredMethodParamiters < clusteredMethod.getParameters().size()) {
 					methodCallExpr.addArgument(new NameExpr("null"));
-					System.err.println(methodCallExpr);
 					clusteredMethodParamiters++;
-					System.err.println(test4);
 				}
 			}
 		}
 
-		System.err.println("------------------------------------------------------------");
-//		int paramsMethodToAdd = methodToSearch.getParameters().size();
-//		int paramsClusterMethod = clusteredMethod.getParameters().size();
-//		
-//		while (paramsMethodToAdd < paramsClusterMethod) {
-//			argTypes.add(0,new NameExpr("null"));
-//			paramsMethodToAdd ++;
-//		}
-//		System.err.println(argTypes);
-		
-		System.err.println("------------------------------------------------------------");
-	
-		
-		
-			
 		return clusteredMethod;
 	}
 	
