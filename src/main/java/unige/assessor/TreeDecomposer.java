@@ -750,12 +750,12 @@ public class TreeDecomposer {
 			return alreadyInMethod;
 		
 		//TODO: udestand if it is correct
-		if(!isInner) {
-			alreadyInMethod = getClusteredMethod(methodToAdd,addToClass,argTypes,argName,methodTestSuite);
-			
-			if(alreadyInMethod!=null)
-				return alreadyInMethod;
-		}
+//		if(!isInner) {
+		alreadyInMethod = getClusteredMethod(methodToAdd,addToClass,argTypes,argName,methodTestSuite);
+		
+		if(alreadyInMethod!=null)
+			return alreadyInMethod;
+//		}
 		
 		
 		int index = 1;
@@ -796,7 +796,7 @@ public class TreeDecomposer {
 	}
 
 	/** Search if the method is already in the class.
-	 * If the method already exist and have the same list of parameter,name, body the method already created is returned
+	 * If the method already exist and have the same number of parameter, name, body the method already created is returned
 	 * if the method has the same list of parameter and body, but with a different name, a warning is added to the log, and the method is returned
 	 * Else null is returned that indicates the method is new and should be added to the class
 	 * @param methodToSearch
@@ -805,16 +805,18 @@ public class TreeDecomposer {
 	 */
 	private MethodDeclaration getMethodAlreadyIn(MethodDeclaration methodToSearch, ClassOrInterfaceDeclaration classToSearch) {
 		List<MethodDeclaration> methods = classToSearch.findAll(MethodDeclaration.class);
+		
 		for(MethodDeclaration method : methods) { 
 			if(method.hashCode()==methodToSearch.hashCode()) 				
 				return method;			
-					
-			if(!method.getParameters().toString().equals(methodToSearch.getParameters().toString())) 			
+				
+			
+			if(method.getParameters().size() != methodToSearch.getParameters().size()) 			
 				continue;
 			
-			String bodyStatement = method.getBody().get().toString();
+			String bodyStatement = method.getBody().get().toString().replaceAll("key[1-9]*", "");
 			
-			if(bodyStatement.equals(methodToSearch.getBody().get().toString())) {	
+			if(bodyStatement.equals(methodToSearch.getBody().get().toString().replaceAll("key[1-9]*", ""))) {	
 				if(!method.getNameAsString().equals(methodToSearch.getNameAsString())) {
 					String unified = method.getNameAsString();
 					addWarning("For PO:" +classToSearch.getNameAsString()+" method "+methodToSearch.getNameAsString() +" and "+unified+" unified under the name "+unified+" since bodies and paramters list are identical");
@@ -823,6 +825,17 @@ public class TreeDecomposer {
 			}			
 		}
 		return null;
+	}
+	
+	private int containsStatement(Statement statementToSearch, List<Statement> statements) {
+		String stm = statementToSearch.toString().replaceAll("key[1-9]*", "");
+		int pos = 0;
+		for (Statement statement : statements) {
+			if(statement.toString().replaceAll("key[1-9]*", "").equals(stm))
+				return pos;
+			pos++;
+		}
+		return -1;
 	}
 	
 	/**This function is used to cluster the PO-method that have the same name
@@ -854,11 +867,7 @@ public class TreeDecomposer {
 		
 		if (clusteredMethod == null)
 			return null;
-	
-		
-		
-		
-		
+			
 		//is used to store the new parameters order
 		List<Node> newArgs = new LinkedList<Node>();
 		for (Parameter param : clusteredMethod.getParameters()) {
@@ -872,11 +881,12 @@ public class TreeDecomposer {
 		
 		int index = 0;
 		
-		for (Statement methodDeclaration : methodToSearch.getBody().get().getStatements()) {
+		for (Statement statement : methodToSearch.getBody().get().getStatements()) {
 			//If there is a common statement I have to update only the newArgs list
-			if(!clusteredMethod.getBody().get().getStatements().contains(methodDeclaration)) {
+			int pos = containsStatement(statement,clusteredMethod.getBody().get().getStatements());
+			if(pos == -1) {
 				
-				List<NameExpr> expr = methodDeclaration.findAll(NameExpr.class);
+				List<NameExpr> expr = statement.findAll(NameExpr.class);
 				for (NameExpr exp : expr) {
 					Parameter result = null;
 					//Retrieve the type of the new argument
@@ -894,11 +904,12 @@ public class TreeDecomposer {
 					addedParams ++;
 					index++;
 				}
-				clusteredMethod.getBody().get().addStatement(methodDeclaration);
+				clusteredMethod.getBody().get().addStatement(statement);
 				
 			}else {
-				newArgs.set(index, argTypes.get(index));
+				newArgs.set(pos, argTypes.get(index));
 				index++;
+				
 			}
 			
 		}
