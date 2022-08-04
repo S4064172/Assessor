@@ -509,8 +509,11 @@ public class TreeDecomposer {
 					for(Node child : blockInstruction.getChildNodes()) {
 						ExpressionStmt expStmt = (ExpressionStmt)child.clone();
 						analyzeMethodArguments(expStmt,values,arguments);
-						if (checkLocator(child,lastLocatorUsed))
+						if (checkLocator(child,lastLocatorUsed)) {
 							lastLocatorUsed = createWaitForElement((ExpressionStmt) expStmt,blockParsed,waitForElementFound);
+							waitForElementFound = true;
+						}
+							
 						blockParsed.addStatement(expStmt);
 					}					
 				}
@@ -924,13 +927,32 @@ public class TreeDecomposer {
 		return null;
 	}
 	
+	/*
+	 *This method is used to find the position of the statement and infer the position of the argument
+	 *If the statement has no argument and it is present in the statements list the method return -2 
+	 *If the statement has same arguments and it is present in the statements list the method return the position of the statement
+	 *If the statement is absent the method return -1
+	 *
+	 *@param statementToSearch: method that we want to add
+	 *@param statements: list of methods already in the cluster
+	 *@return pos: the position of the argument
+	 */
 	private int containsStatement(Statement statementToSearch, List<Statement> statements) {
 		String stm = statementToSearch.toString().replaceAll("key[1-9]*", "");
 		int pos = 0;
 		for (Statement statement : statements) {
+			
+			//remove the arguments and check id the methods are the same
 			if(statement.toString().replaceAll("key[1-9]*", "").equals(stm))
-				return pos;
-			pos++;
+				//only if the method has an argument the method return the pos
+				if (statement.toString().contains("key[1-9]*"))
+					return pos;
+				else 
+					return -2;
+			
+			//only if the method has an argument we increment the counter
+			if(statement.toString().contains("key[1-9]*"))
+				pos++;
 		}
 		return -1;
 	}
@@ -947,7 +969,8 @@ public class TreeDecomposer {
 	 * @return clusteredMethod
 	 */
 	private MethodDeclaration getClusteredMethod(
-			MethodDeclaration methodToSearch, ClassOrInterfaceDeclaration classToSearch,
+			MethodDeclaration methodToSearch,
+			ClassOrInterfaceDeclaration classToSearch,
 			List<Node> argTypes, List<NameExpr> argName,
 			MethodDeclaration methodTestSuite
 			) {
@@ -985,10 +1008,17 @@ public class TreeDecomposer {
 		//if the methods contains some locator  we can not cluster them
 		if (countLocator(methodToSearch.getChildNodes()) > 0 || countLocator(clusteredMethod.getChildNodes()) > 0)
 			return null;
-		
+		System.err.println("classToSearch " + classToSearch.getNameAsString());
+		System.err.println("clusteredMethod " + clusteredMethod.getNameAsString());
+		System.err.println("methodToSearch " + methodToSearch.getNameAsString());
 		for (Statement statement : methodToSearch.getBody().get().getStatements()) {
+			System.err.println("\tstatement " + statement);
 			//If there is a common statement I have to update only the newArgs list
 			int pos = containsStatement(statement,clusteredMethod.getBody().get().getStatements());
+			System.err.println("\tpos " + pos);
+			
+			if(pos == -2) continue;
+			
 			if(pos == -1) {
 				
 				List<NameExpr> expr = statement.findAll(NameExpr.class);
@@ -999,7 +1029,8 @@ public class TreeDecomposer {
 						if (param.toString().endsWith(exp.toString()))
 							result = param;
 					}
-					//change the name
+					
+					//change the name of the parameter & argument
 					exp.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
 					result.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
 					
@@ -1012,8 +1043,13 @@ public class TreeDecomposer {
 				clusteredMethod.getBody().get().addStatement(statement);
 				
 			}else {
-				newArgs.set(pos, argTypes.get(index));
-				index++;
+				
+				List<NameExpr> expr = statement.findAll(NameExpr.class);
+				System.err.println("\texpr " + expr);
+				for (NameExpr exp : expr) {
+					newArgs.set(pos, argTypes.get(index));
+					index++;
+				}
 				
 			}
 			
@@ -1030,12 +1066,17 @@ public class TreeDecomposer {
 		
 		//Update the usage of the cluster method in all the tests
 		List<MethodCallExpr> methodList = methodTestSuite.getParentNode().get().findAll(MethodCallExpr.class);
+		System.err.println("methodToSearch " + classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString());
+		System.err.println("classToSearch " + classToSearch.getNameAsString());
 		for (MethodCallExpr methodCallExpr : methodList) {
-			if (methodCallExpr.toString().contains(methodToSearch.getNameAsString())) {
-				while (clusteredMethodParamiters < clusteredMethod.getParameters().size()) {
+			if (methodCallExpr.toString().contains(classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString())) {
+				System.err.println("methodCallExpr " + methodCallExpr);
+				int counter = clusteredMethodParamiters;
+				while (counter < clusteredMethod.getParameters().size()) {
 					methodCallExpr.addArgument(new NameExpr("null"));
-					clusteredMethodParamiters++;
+					counter++;
 				}
+				System.err.println("methodCallExpr " + methodCallExpr);
 			}
 		}
 
