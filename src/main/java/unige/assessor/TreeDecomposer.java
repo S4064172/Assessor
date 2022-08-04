@@ -26,13 +26,17 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.expr.SimpleName;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.AssertStmt;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
+import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
+import com.github.javaparser.ast.visitor.GenericVisitor;
+import com.github.javaparser.ast.visitor.VoidVisitor;
 
 public class TreeDecomposer {
 	//Delimiter generated from SeleniumIDE Extension
@@ -579,7 +583,7 @@ public class TreeDecomposer {
 			exp = exp.get(0).getChildNodes();
 		
 		for (Node node : exp) {
-			if( node.toString().contains("By") )
+			if( checkLocatorIsPresent(node) )
 				return (MethodCallExpr) node;
 		}
 		return null;
@@ -928,17 +932,21 @@ public class TreeDecomposer {
 		String stm = statementToSearch.toString().replaceAll("key[1-9]*", "");
 		int pos = 0;
 		for (Statement statement : statements) {
+			Statement analize = statement;
+			if(statement instanceof IfStmt)
+				analize = ((IfStmt) statement).getThenStmt();
 			
 			//remove the arguments and check id the methods are the same
-			if(statement.toString().replaceAll("key[1-9]*", "").equals(stm))
+			if(analize.toString().replaceAll("key[1-9]*", "").equals(stm))
 				//only if the method has an argument the method return the pos
-				if (statement.toString().contains("key[1-9]*"))
+				
+				if (analize.toString().contains("key"))
 					return pos;
 				else 
 					return -2;
 			
 			//only if the method has an argument we increment the counter
-			if(statement.toString().contains("key[1-9]*"))
+			if(analize.toString().contains("key"))
 				pos++;
 		}
 		return -1;
@@ -1075,6 +1083,28 @@ public class TreeDecomposer {
 				argTypes.set(i, newArgs.get(i));
 			else
 				argTypes.add(newArgs.get(i));
+		}
+		
+		
+		
+		MethodDeclaration clone = clusteredMethod.clone();
+		List<Node> list = clone.getBody().get().getChildNodes();
+		int stmIndex = 0;
+		int argsIndex=1;
+		for (Statement node : clone.getBody().get().getStatements()) {
+			System.err.println(node);
+			if ( !(node instanceof IfStmt) &&  node.toString().contains("(key")) {
+				
+				Expression nullCheck = new BinaryExpr(new NameExpr("key"+(argsIndex++)), new NullLiteralExpr(), BinaryExpr.Operator.NOT_EQUALS);
+				IfStmt ifstm = new IfStmt(nullCheck , node, null);
+				clusteredMethod.getBody().get().setStatement(stmIndex, ifstm);				
+			}
+			
+			if(node instanceof IfStmt)
+				argsIndex ++;
+			stmIndex++;
+			
+			
 		}
 		
 		
