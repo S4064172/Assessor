@@ -206,62 +206,59 @@ public class TreeDecomposer {
 //			return locator;
 //	}
 	
-	private int countLocator(List<Node> nodeList) {
-		int countLocator = 0;
-		String locator = "";
-		for (Node node : nodeList) {
-			
-			
-			if (node.toString().contains(DELIMITER_BACK_TO_MAIN) || node.toString().contains(DELIMITER_BACK_TO_FATHER))
-				break;
-			
-			List<MethodCallExpr> test =  node.findAll(MethodCallExpr.class);
-			for (MethodCallExpr methodCallExpr : test) {
-				if(methodCallExpr.toString().startsWith("By") && !methodCallExpr.toString().equals(locator)) {
-					countLocator ++;
-					locator = methodCallExpr.toString();
-				}
-			}
-		}
-		return countLocator;
-	}
 	
-	private void addPoDeclaretion(Optional<BlockStmt> blockStmt, int pos, String POName, String methodName) {
+	
+	private void addPoDeclaretion(BlockStmt blockStmt, int pos, String POName, String methodName) {
 		MethodCallExpr innerExp = new MethodCallExpr("System.out.println(\"{ASSESSOR}:"+POName+":"+methodName+"\")");
 		innerExp.addArgument(new StringLiteralExpr("{ASSESSOR}:"+POName+":"+methodName));
-		blockStmt.get().addStatement(pos,innerExp);
+		blockStmt.addStatement(pos,innerExp);
 	}
 		
-	//TODO: gestire i comandi senza id
-	private void addMissing(Optional<BlockStmt> blockStmt, String firstLocator, String POName, boolean isInner) {
+	/**
+	 * This function try to fill the missing PO statement. 
+	 * The flow add the PO statement only if the exp has instanceof ExpressionStmt
+	 * 
+	 * @param blockStmt
+	 * @param firstLocator
+	 * @param PODeclaration
+	 * @param isInner
+	 * @return
+	 */
+	
+	private boolean addMissing(BlockStmt blockStmt, String firstLocator, ClassOrInterfaceDeclaration PODeclaration, boolean isInner) {
+		//TODO: gestire i comandi senza id
 		boolean inner = isInner;
-		Node lastVisit = null;
 		int counter = 0;
-		for (Node node : blockStmt.get().clone().getChildNodes()) {
-//			System.err.println(node.toString());
-			if (node.toString().contains(DELIMITER_BACK_TO_MAIN) || node.toString().contains(DELIMITER_BACK_TO_FATHER)) {
+		BlockStmt clone = blockStmt.clone();
+		
+		//if there is less than 2 locator, return false
+		if(countLocator(clone.getChildNodes()) < 2)
+			return false;
+		
+		for (Node node : clone.getChildNodes()) {
+			//System.err.println(node.toString());
+			if (node.toString().contains(DELIMITER_BACK_TO_MAIN) || node.toString().contains(DELIMITER_BACK_TO_FATHER) || node.toString().contains(DELIMITER_PO_DECLARATION)) {
 				break;
 			}
-			
-			List<MethodCallExpr> test =  node.findAll(MethodCallExpr.class);
-			for (MethodCallExpr methodCallExpr : test) {
-				if(methodCallExpr.toString().startsWith("By") && !methodCallExpr.toString().equals(firstLocator)) {
-					if(!inner) {
-						if(lastVisit == null || !lastVisit.toString().contains(DELIMITER_PO_DECLARATION)) {
+			if(node instanceof ExpressionStmt) {
+				List<MethodCallExpr> test =  node.findAll(MethodCallExpr.class);
+				for (MethodCallExpr methodCallExpr : test) {
+					//System.err.println(methodCallExpr.toString());
+					if(methodCallExpr.toString().startsWith("By") && !methodCallExpr.toString().equals(firstLocator)) {
+						if(!inner) {
 							String methodName = generateNameForGetterCalls(methodCallExpr);
 							firstLocator = methodCallExpr.toString();
-							addPoDeclaretion(blockStmt,counter,POName,methodName);
+							addPoDeclaretion(blockStmt,counter,(PODeclaration==null?"AutoPo":PODeclaration.getNameAsString()),methodName);
 							counter ++;
+						}else
+							inner = false;
 						}
-						
-					}else
-						inner = false;
 					}
-				}
-			lastVisit = node;
+			}
+				
 			counter ++;
 		}
-		return;
+		return clone.getChildNodes().size() != blockStmt.getChildNodes().size();
 	}
 		
 	/** Analyze each instruction recursively, to divide between TestMethod calls and PageObject calls and to create the dependency between sub PageObject call
@@ -285,7 +282,7 @@ public class TreeDecomposer {
 			Map<String,String> localFieldDeclaration, 
 			List<Node> values, List<NameExpr> arguments,
 			List<Node> innerValues, List<NameExpr> innerArguments,
-			boolean waitForElementFound, boolean isInner, boolean forceInner,
+			boolean waitForElementFound, boolean isInner,
 			String lastLocatorUsed
 			) {
 		
@@ -303,18 +300,14 @@ public class TreeDecomposer {
 			boolean delimiterEnd = false;
 			
 			if(delimiterFound==null) {
-				delimiterEnd = _checkDelimiterEnd(node);
-				if(delimiterEnd) {
-					forceInner = false;
-				}
-					
+				delimiterEnd = _checkDelimiterEnd(node);					
 			}
 				
 			//If we are parsing an inner method and we found an new startDelimiter or a BacktoMain
 			//we add manually the delimiter backToFather
 			if((delimiterFound!=null || delimiterEnd) && lastPageObject!=null && isInner) {
 				blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_FATHER.replace(";", "")));
-				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, true,forceInner,lastLocatorUsed);
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
 				return;
 			}
 			
@@ -322,25 +315,17 @@ public class TreeDecomposer {
 			//otherwise the tool instantiates the new object in the wrong place
 			if(delimiterFound != null && lastPageObject != null && !delimiterFound.get("pageObjectName").toString().equals(lastPageObject.getName().toString())) {
 				blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
-				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,forceInner,lastLocatorUsed);
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,lastLocatorUsed);
 				return;
 			}
 			
-			//If we are parsing an inner method and we found an new startDelimiter or a BacktoMain
-			//we add manually the close the inner method
-//			if((delimiterFound!=null || delimiterEnd) && lastPageObject!=null && isInner) {
-//				addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, true);	
-//				return;
-//				
-//			}
-			
+		
 			if(delimiterFound==null && !delimiterEnd) 
 				delimiterEnd =  _checkDelimiterChildEnd(node);
 			
-			
-			if(delimiterFound == null && !delimiterEnd && countLocator(blockStmt.get().getChildNodes()) > 1 && !forceInner && lastPageObject != null) {
-				addMissing(blockStmt,"",lastPageObject.getNameAsString(),isInner);
-				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, isInner,true,lastLocatorUsed);
+				
+			if(delimiterFound == null && !delimiterEnd && addMissing(blockStmt.get(),"",lastPageObject,isInner) && lastPageObject != null) {
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, isInner,lastLocatorUsed);
 				return;
 			}
 								
@@ -350,18 +335,18 @@ public class TreeDecomposer {
 				//starts the inner generation
 				if(lastPageObject!=null && !delimiterEnd) {
 											
-					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true,forceInner,lastLocatorUsed);
+					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
 					
 					innerValues.addAll(values);
 					innerArguments.addAll(arguments);
 					
 					//TODO: capire questo che serve
-					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,forceInner,lastLocatorUsed);
-					
-					lastPageObject = null;
-					lastLocatorUsed = "";
-					innerValues = new LinkedList<>();
-					innerArguments = new LinkedList<NameExpr>();
+//					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,forceInner,lastLocatorUsed);
+//					
+//					lastPageObject = null;
+//					lastLocatorUsed = "";
+//					innerValues = new LinkedList<>();
+//					innerArguments = new LinkedList<NameExpr>();
 					
 					
 				}else {
@@ -380,13 +365,12 @@ public class TreeDecomposer {
 							lastPageObject = null;
 							methodToAddStatement = methodTestSuite;
 							lastLocatorUsed = "";
-							
+							innerValues = new LinkedList<>();
+							innerArguments = new LinkedList<NameExpr>();
 							isInner = false;
-						
-//							innerValues = new LinkedList<>();
-//							innerArguments = new LinkedList<NameExpr>();
+							
 						}else {
-							analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,forceInner,lastLocatorUsed);
+							analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,lastLocatorUsed);
 						}
 						return;
 					} else {
@@ -416,7 +400,7 @@ public class TreeDecomposer {
 					}
 					
 				}
-				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound,isInner,forceInner,lastLocatorUsed);
+				analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 
 				return;
 				
@@ -455,7 +439,7 @@ public class TreeDecomposer {
 						innerExp.addArgument(new StringLiteralExpr("{ASSESSOR}:"+lastPageObject.getNameAsString()+":methodName"));
 						blockStmt.get().addStatement(0,innerExp);
 						blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
-						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner,forceInner ,lastLocatorUsed);
+						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner ,lastLocatorUsed);
 						return;
 					}
 					
@@ -476,6 +460,8 @@ public class TreeDecomposer {
 					lastPageObject = null;
 					lastLocatorUsed = "";
 					isInner = false;
+					innerValues = new LinkedList<>();
+					innerArguments = new LinkedList<NameExpr>();
 					methodToAddStatement = methodTestSuite;
 				}
 				else { 
@@ -503,6 +489,8 @@ public class TreeDecomposer {
 					lastLocatorUsed = "";
 					isInner = false;
 					methodToAddStatement = methodTestSuite;
+					innerValues = new LinkedList<>();
+					innerArguments = new LinkedList<NameExpr>();
 				}else {					
 					BlockStmt blockParsed = new BlockStmt();
 					bodyMethod.addStatement(blockParsed);
@@ -524,7 +512,7 @@ public class TreeDecomposer {
 			}
 			blockStmt.get().remove(node);
 
-			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner,forceInner,lastLocatorUsed);
+			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 			return;
 	}
 		
@@ -552,11 +540,10 @@ public class TreeDecomposer {
 		
 		boolean waitForElementFound = false;
 		boolean isInner = false;
-		boolean forceInner = false;
 		String lastLocatorUsed = "";
 						
 		while(blockStmt.get().getStatements().size() > 0)
-			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,forceInner,lastLocatorUsed);
+			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,lastLocatorUsed);
 
 	}
 
@@ -847,7 +834,7 @@ public class TreeDecomposer {
 			MethodDeclaration methodTestSuite) {
 		methodAddArguments(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
 		MethodDeclaration alreadyInMethod = getMethodAlreadyIn(methodToAdd,addToClass);
-		
+				
 		if(alreadyInMethod!=null)
 			return alreadyInMethod;
 		
@@ -957,6 +944,33 @@ public class TreeDecomposer {
 		return -1;
 	}
 	
+	/**
+	 * This function count how many locators are present in the given list
+	 * 
+	 * @param nodeList
+	 * @return
+	 */
+	private int countLocator(List<Node> nodeList) {
+		int countLocator = 0;
+		String locator = "";
+		for (Node node : nodeList) {
+			
+			if (node.toString().contains(DELIMITER_BACK_TO_MAIN) || node.toString().contains(DELIMITER_BACK_TO_FATHER) || node.toString().contains(DELIMITER_PO_DECLARATION))
+				break;
+			
+			
+			List<MethodCallExpr> expsList =  node.findAll(MethodCallExpr.class);
+			for (MethodCallExpr methodCallExpr : expsList) {
+				if(methodCallExpr.toString().startsWith("By") && !methodCallExpr.toString().equals(locator)) {
+					countLocator ++;
+					locator = methodCallExpr.toString();
+				}
+			}
+			
+		}
+		return countLocator;
+	}
+	
 	/**This function is used to cluster the PO-method that have the same name
 	 * Once we found a po-method with the same name, we union the two po-method and 
 	 * reorganize the parameters of the two methods
@@ -1008,14 +1022,14 @@ public class TreeDecomposer {
 		//if the methods contains some locator  we can not cluster them
 		if (countLocator(methodToSearch.getChildNodes()) > 0 || countLocator(clusteredMethod.getChildNodes()) > 0)
 			return null;
-		System.err.println("classToSearch " + classToSearch.getNameAsString());
-		System.err.println("clusteredMethod " + clusteredMethod.getNameAsString());
-		System.err.println("methodToSearch " + methodToSearch.getNameAsString());
+		//System.err.println("classToSearch " + classToSearch.getNameAsString());
+		//System.err.println("clusteredMethod " + clusteredMethod.getNameAsString());
+		//System.err.println("methodToSearch " + methodToSearch.getNameAsString());
 		for (Statement statement : methodToSearch.getBody().get().getStatements()) {
-			System.err.println("\tstatement " + statement);
+			//System.err.println("\tstatement " + statement);
 			//If there is a common statement I have to update only the newArgs list
 			int pos = containsStatement(statement,clusteredMethod.getBody().get().getStatements());
-			System.err.println("\tpos " + pos);
+			//System.err.println("\tpos " + pos);
 			
 			if(pos == -2) continue;
 			
@@ -1045,7 +1059,7 @@ public class TreeDecomposer {
 			}else {
 				
 				List<NameExpr> expr = statement.findAll(NameExpr.class);
-				System.err.println("\texpr " + expr);
+				//System.err.println("\texpr " + expr);
 				for (NameExpr exp : expr) {
 					newArgs.set(pos, argTypes.get(index));
 					index++;
@@ -1066,17 +1080,17 @@ public class TreeDecomposer {
 		
 		//Update the usage of the cluster method in all the tests
 		List<MethodCallExpr> methodList = methodTestSuite.getParentNode().get().findAll(MethodCallExpr.class);
-		System.err.println("methodToSearch " + classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString());
-		System.err.println("classToSearch " + classToSearch.getNameAsString());
+		//System.err.println("methodToSearch " + classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString());
+		//System.err.println("classToSearch " + classToSearch.getNameAsString());
 		for (MethodCallExpr methodCallExpr : methodList) {
 			if (methodCallExpr.toString().contains(classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString())) {
-				System.err.println("methodCallExpr " + methodCallExpr);
+				//System.err.println("methodCallExpr " + methodCallExpr);
 				int counter = clusteredMethodParamiters;
 				while (counter < clusteredMethod.getParameters().size()) {
 					methodCallExpr.addArgument(new NameExpr("null"));
 					counter++;
 				}
-				System.err.println("methodCallExpr " + methodCallExpr);
+				//System.err.println("methodCallExpr " + methodCallExpr);
 			}
 		}
 
