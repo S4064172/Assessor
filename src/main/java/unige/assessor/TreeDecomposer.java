@@ -343,9 +343,9 @@ public class TreeDecomposer {
 					
 					innerValues.addAll(values);
 					innerArguments.addAll(arguments);
-					
-					//TODO: capire questo che serve
-//					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,forceInner,lastLocatorUsed);
+					isInner = false;
+//					//TODO: capire questo che serve
+//					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,lastLocatorUsed);
 //					
 //					lastPageObject = null;
 //					lastLocatorUsed = "";
@@ -434,13 +434,21 @@ public class TreeDecomposer {
 				if(expStmt.toString().startsWith("assert") && lastPageObject!=null) {
 				
 					//Add the previews call method, that will return void
-					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments, innerValues, innerArguments,isInner);	
+//					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments, innerValues, innerArguments,isInner);	
 					
-					
+					//if there is an assert inside a method with other selenium command
+					//the tool create a new method only for the assert
 					if(isInner) {
-//						addMissing(blockStmt,"",lastPageObject.getNameAsString(),false);
-						MethodCallExpr innerExp = new MethodCallExpr("System.out.println(\"{ASSESSOR}:"+lastPageObject.getNameAsString()+":methodName\")");
-						innerExp.addArgument(new StringLiteralExpr("{ASSESSOR}:"+lastPageObject.getNameAsString()+":methodName"));
+						String methodName = null;
+						List<MethodCallExpr> methodCallExprList =  clonedNode.findAll(MethodCallExpr.class);
+						for (MethodCallExpr methodCallExpr : methodCallExprList) {
+							//System.err.println(methodCallExpr.toString());
+							if(methodCallExpr.toString().startsWith("By")) {
+								methodName = generateNameForGetterCalls(methodCallExpr);
+							}
+						}
+						MethodCallExpr innerExp = new MethodCallExpr("System.out.println(\"{ASSESSOR}:"+lastPageObject.getNameAsString()+":"+methodName+")");
+						innerExp.addArgument(new StringLiteralExpr("{ASSESSOR}:"+lastPageObject.getNameAsString()+":"+methodName));
 						blockStmt.get().addStatement(0,innerExp);
 						blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
 						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner ,lastLocatorUsed);
@@ -478,7 +486,27 @@ public class TreeDecomposer {
 					bodyMethod.addStatement(blockInstruction);
 				} else if(searchForAssertInBlockStmt(blockInstruction)) {
 					//Add the previews call method, that will return void
-					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments, innerValues, innerArguments,isInner);	
+//					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments, innerValues, innerArguments,isInner);	
+					
+					//if there is an assert inside a method with other selenium command
+					//the tool create a new method only for the assert
+					if(isInner) {
+						String methodName = null;
+						List<MethodCallExpr> methodCallExprList =  clonedNode.findAll(MethodCallExpr.class);
+						for (MethodCallExpr methodCallExpr : methodCallExprList) {
+							//System.err.println(methodCallExpr.toString());
+							if(methodCallExpr.toString().startsWith("By")) {
+								methodName = generateNameForGetterCalls(methodCallExpr);
+							}
+						}
+						MethodCallExpr innerExp = new MethodCallExpr("System.out.println(\"{ASSESSOR}:"+lastPageObject.getNameAsString()+":"+methodName+")");
+						innerExp.addArgument(new StringLiteralExpr("{ASSESSOR}:"+lastPageObject.getNameAsString()+":"+methodName));
+						blockStmt.get().addStatement(0,innerExp);
+						blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
+						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner ,lastLocatorUsed);
+						return;
+					}
+					
 					List<Node> childInstruction = blockInstruction.getChildNodes();
 					
 					//if the method contains a search for an element, then create the statement, it should never be empty because contains at least 1 assert call
@@ -517,6 +545,12 @@ public class TreeDecomposer {
 			blockStmt.get().remove(node);
 
 			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound,isInner,lastLocatorUsed);
+			lastPageObject = null;
+			methodToAddStatement = methodTestSuite;
+			lastLocatorUsed = "";
+			innerValues = new LinkedList<>();
+			innerArguments = new LinkedList<NameExpr>();
+			isInner = false;
 			return;
 	}
 		
@@ -546,8 +580,14 @@ public class TreeDecomposer {
 		boolean isInner = false;
 		String lastLocatorUsed = "";
 						
-		while(blockStmt.get().getStatements().size() > 0)
+		while(blockStmt.get().getStatements().size() > 0) {
 			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,lastLocatorUsed);
+			lastPageObject = null;
+			lastLocatorUsed = "";
+			innerValues = new LinkedList<>();
+			innerArguments = new LinkedList<NameExpr>();
+		}
+			
 
 	}
 
@@ -1092,7 +1132,7 @@ public class TreeDecomposer {
 		int stmIndex = 0;
 		int argsIndex=1;
 		for (Statement node : clone.getBody().get().getStatements()) {
-			System.err.println(node);
+//			System.err.println(node);
 			if ( !(node instanceof IfStmt) &&  node.toString().contains("(key")) {
 				
 				Expression nullCheck = new BinaryExpr(new NameExpr("key"+(argsIndex++)), new NullLiteralExpr(), BinaryExpr.Operator.NOT_EQUALS);
