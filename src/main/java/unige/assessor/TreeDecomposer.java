@@ -269,8 +269,19 @@ public class TreeDecomposer {
 											
 					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
 					
-					innerValues.addAll(values);
-					innerArguments.addAll(arguments);
+					int index = 0;
+					while(index < values.size()) {	
+						if(!innerValues.contains(values.get(index)))
+							innerValues.add(values.get(index));
+						
+						if(!innerArguments.contains(arguments.get(index)))
+							innerArguments.add(arguments.get(index));
+	
+						index ++;
+					}
+					
+//					innerValues=values;;
+//					innerArguments=arguments;
 					
 					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,lastLocatorUsed);
 					
@@ -455,7 +466,7 @@ public class TreeDecomposer {
 		
 		while(blockStmt.get().getStatements().size() > 0)
 			analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values, arguments,innerValues,innerArguments, waitForElementFound,isInner,lastLocatorUsed);
-
+			
 	}
 
 	private boolean checkLocatorIsPresent(Node node) {
@@ -725,7 +736,74 @@ public class TreeDecomposer {
 		addPackage(unit,packageName);
 		return newClass;
 	}	
- 	
+ 	/**
+ 	 *	The method cleanups the methodToAdd and it removes all the duplicate commands.
+ 	 *	The method keeps:
+ 	 * 		- the first statement
+ 	 * 		- the first argNames (plus the argNameInner)
+ 	 * 		- the last argTypes (plus the argTypesInner)
+ 	 * @param methodToAdd
+ 	 * @param argTypes
+ 	 * @param argName
+ 	 * @param argTypesInner
+ 	 * @param argNameInner
+ 	 */
+ 	private void cleanupMethod(
+ 			MethodDeclaration methodToAdd,
+ 			List<Node> argTypes, List<NameExpr> argName,
+			List<Node> argTypesInner, List<NameExpr> argNameInner
+ 			) {
+ 		
+ 		List<Statement> statementList = methodToAdd.getBody().get().getStatements();
+ 		 		
+ 		int indexStatements = 0;
+ 		int indexArgs = 0;
+ 		int removedStatemens = 0;
+ 		int removeArgs = 0;
+ 		boolean find = false;
+ 		
+ 		for (Statement stm : methodToAdd.clone().getBody().get().getStatements()) {
+// 			System.err.println(stm);
+ 			for (Statement statement : methodToAdd.clone().getBody().get().getStatements()) {
+// 				System.err.println("\t"+statement);
+ 				
+ 				//replace the argument so we can compare the tow statements
+				if (statement.toString().replaceAll("key[1-9]*", "").equals(stm.toString().replaceAll("key[1-9]*", ""))) {
+					if(find) {
+						
+						statementList.remove(indexStatements-removedStatemens);
+						removedStatemens++;
+						
+						//cleanup the argName and the argTypes
+						if(statement.toString().contains("key")) {
+							
+							//the argName contains also the argNameInner
+							//and since we remove the elements from the begin
+							//we have to skip it
+							argName.remove( indexArgs +  argNameInner.size() - removeArgs);
+							
+							//the argTypes contains also the argTypesInner
+							//but since we remove the elements from the end
+							//it is not a problem 
+							argTypes.remove((argTypes.size()-1) - indexArgs + removeArgs);
+							removeArgs++;
+						}
+						
+					}
+					find = true;
+				}
+				indexStatements ++;
+				if(statement.toString().contains("key")) {
+					indexArgs++;
+				}
+			}
+ 			find = false;
+ 			indexStatements = 0;
+ 			removedStatemens = 0;
+ 			indexArgs = 0;
+ 			removeArgs = 0;
+		}
+ 	}
  	
  	/** The method is modified and the list of parameters is added in the declaration
  	 * If the method already exist in the class, then the method is returned
@@ -741,8 +819,14 @@ public class TreeDecomposer {
 	private MethodDeclaration addMethod(MethodDeclaration methodToAdd, ClassOrInterfaceDeclaration addToClass,
 			List<Node> argTypes, List<NameExpr> argName,
 			List<Node> argTypesInner, List<NameExpr> argNameInner) {
+		
+		cleanupMethod(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
+		
 		methodAddArguments(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
 		MethodDeclaration alreadyInMethod = getMethodAlreadyIn(methodToAdd,addToClass);
+		
+		
+		
 		if(alreadyInMethod!=null)
 			return alreadyInMethod;
 		int index = 1;
