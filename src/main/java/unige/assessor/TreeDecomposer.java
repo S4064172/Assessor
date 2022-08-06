@@ -179,7 +179,7 @@ public class TreeDecomposer {
 	private void analyzeMethod(MethodDeclaration method) {
 		if("setUp".equals(method.getNameAsString()) || "tearDown".equals(method.getNameAsString())) {
 			//Add the method to the central class without parameter/arguments
-			addMethod(method,centralClass,null,null,null,null,false,null);			
+			addMethod(method,centralClass,null,null,null,null,null);			
 		}else {	
 			//Read the body of the statement
 			Optional<BlockStmt> bodyStmt = method.findFirst(BlockStmt.class);			
@@ -341,10 +341,20 @@ public class TreeDecomposer {
 											
 					analyzeInstructionCalls_recursive(methodToAddStatement, blockStmt, null, methodToAddStatement, localFieldDeclaration,values,arguments, innerValues, innerArguments, waitForElementFound, true,lastLocatorUsed);
 					
-					innerValues.addAll(values);
-					innerArguments.addAll(arguments);
-					isInner = false;
-//					//TODO: capire questo che serve
+					int index = 0;
+					while(index < values.size()) {	
+						if(!innerValues.contains(values.get(index)))
+							innerValues.add(values.get(index));
+						
+						if(!innerArguments.contains(arguments.get(index)))
+							innerArguments.add(arguments.get(index));
+	
+						index ++;
+					}
+					
+//					innerValues=values;;
+//					innerArguments=arguments;
+					
 //					analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, false,lastLocatorUsed);
 //					
 //					lastPageObject = null;
@@ -711,10 +721,10 @@ public class TreeDecomposer {
 			addWarning("The method declaration " +methodPO.getNameAsString() +" in the pageObject: "+pageObject.getNameAsString() + " is empty. So it will be discharged" );			
 		}else {
 			if(isInner) {
-				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,innerValues, innerArguments,isInner,methodTestSuite);
+				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,innerValues, innerArguments,methodTestSuite);
 				addCallToMethod("",methodTestSuite,methodAdded,values,arguments, innerValues, innerArguments,isInner);
 			} else {
-				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,null, null,isInner,methodTestSuite);
+				MethodDeclaration methodAdded = addMethod( methodPO,  pageObject,values,arguments,null, null,methodTestSuite);
 				addCallToMethod(pageObjectVariable,methodTestSuite,methodAdded,values,arguments, null, null,isInner);
 			}
 							
@@ -858,7 +868,74 @@ public class TreeDecomposer {
 		addPackage(unit,packageName);
 		return newClass;
 	}	
- 	
+ 	/**
+ 	 *	The method cleanups the methodToAdd and it removes all the duplicate commands.
+ 	 *	The method keeps:
+ 	 * 		- the first statement
+ 	 * 		- the first argNames (plus the argNameInner)
+ 	 * 		- the last argTypes (plus the argTypesInner)
+ 	 * @param methodToAdd
+ 	 * @param argTypes
+ 	 * @param argName
+ 	 * @param argTypesInner
+ 	 * @param argNameInner
+ 	 */
+ 	private void cleanupMethod(
+ 			MethodDeclaration methodToAdd,
+ 			List<Node> argTypes, List<NameExpr> argName,
+			List<Node> argTypesInner, List<NameExpr> argNameInner
+ 			) {
+ 		
+ 		List<Statement> statementList = methodToAdd.getBody().get().getStatements();
+ 		 		
+ 		int indexStatements = 0;
+ 		int indexArgs = 0;
+ 		int removedStatemens = 0;
+ 		int removeArgs = 0;
+ 		boolean find = false;
+ 		
+ 		for (Statement stm : methodToAdd.clone().getBody().get().getStatements()) {
+// 			System.err.println(stm);
+ 			for (Statement statement : methodToAdd.clone().getBody().get().getStatements()) {
+// 				System.err.println("\t"+statement);
+ 				
+ 				//replace the argument so we can compare the tow statements
+				if (statement.toString().replaceAll("key[1-9]*", "").equals(stm.toString().replaceAll("key[1-9]*", ""))) {
+					if(find) {
+						
+						statementList.remove(indexStatements-removedStatemens);
+						removedStatemens++;
+						
+						//cleanup the argName and the argTypes
+						if(statement.toString().contains("key")) {
+							
+							//the argName contains also the argNameInner
+							//and since we remove the elements from the begin
+							//we have to skip it
+							argName.remove( indexArgs +  argNameInner.size() - removeArgs);
+							
+							//the argTypes contains also the argTypesInner
+							//but since we remove the elements from the end
+							//it is not a problem 
+							argTypes.remove((argTypes.size()-1) - indexArgs + removeArgs);
+							removeArgs++;
+						}
+						
+					}
+					find = true;
+				}
+				indexStatements ++;
+				if(statement.toString().contains("key")) {
+					indexArgs++;
+				}
+			}
+ 			find = false;
+ 			indexStatements = 0;
+ 			removedStatemens = 0;
+ 			indexArgs = 0;
+ 			removeArgs = 0;
+		}
+ 	}
  	
  	/** The method is modified and the list of parameters is added in the declaration
  	 * If the method already exist in the class, then the method is returned
@@ -874,11 +951,15 @@ public class TreeDecomposer {
 	private MethodDeclaration addMethod(MethodDeclaration methodToAdd, ClassOrInterfaceDeclaration addToClass,
 			List<Node> argTypes, List<NameExpr> argName,
 			List<Node> argTypesInner, List<NameExpr> argNameInner,
-			boolean isInner,
 			MethodDeclaration methodTestSuite) {
+		
+		cleanupMethod(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
+		
 		methodAddArguments(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
 		MethodDeclaration alreadyInMethod = getMethodAlreadyIn(methodToAdd,addToClass);
-				
+		
+		
+		
 		if(alreadyInMethod!=null)
 			return alreadyInMethod;
 		
@@ -1229,7 +1310,7 @@ public class TreeDecomposer {
 		//Add Method To PO
 		//If the body of the new method is already present 
 		//I have to use that method
-		methodPO = addMethod(methodPO,pageObject,null,null,null,null,false,null);	
+		methodPO = addMethod(methodPO,pageObject,null,null,null,null,null);	
 		
 //		}	
 		//Now add the assert in the Main Function	
@@ -1349,7 +1430,7 @@ public class TreeDecomposer {
 				//Add Method To PO
 				//If the body of the new method is already present 
 				//I have to use that method
-				methodPO = addMethod(methodPO,pageObject,values,argumentsName,null,null,false,null);						
+				methodPO = addMethod(methodPO,pageObject,values,argumentsName,null,null,null);						
 			}else {
 				ExpressionStmt expStmt = (ExpressionStmt)child.clone();
 				analyzeMethodArguments(expStmt,values,argumentsName);
