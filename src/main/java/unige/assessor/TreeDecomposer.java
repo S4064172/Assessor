@@ -35,8 +35,6 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
-import com.github.javaparser.ast.visitor.GenericVisitor;
-import com.github.javaparser.ast.visitor.VoidVisitor;
 
 public class TreeDecomposer {
 	//Delimiter generated from SeleniumIDE Extension
@@ -211,14 +209,25 @@ public class TreeDecomposer {
 //	}
 	
 	
-	
+	/**
+	 * 
+	 * @param blockStmt
+	 * @param pos
+	 * @param POName
+	 * @param methodName
+	 */
 	private void addPoDeclaretion(BlockStmt blockStmt, int pos, String POName, String methodName) {
 		MethodCallExpr innerExp = new MethodCallExpr("System.out.println(\"{ASSESSOR}:"+POName+":"+methodName+"\")");
 		innerExp.addArgument(new StringLiteralExpr("{ASSESSOR}:"+POName+":"+methodName));
 		blockStmt.addStatement(pos,innerExp);
 	}
 	
-	
+	/**
+	 * 
+	 * @param node
+	 * @param exp
+	 * @return
+	 */
 	private String getBaseNameForMethod(Node node, MethodCallExpr exp) {
 		String res = "";
 			
@@ -238,6 +247,13 @@ public class TreeDecomposer {
 	
 	}
 	
+	
+	/**
+	 * 
+	 * @param blockStmt
+	 * @param exp
+	 * @return
+	 */
 	private String getBaseNameForMethod(BlockStmt blockStmt, MethodCallExpr exp) {
 		String res = "";
 		
@@ -261,7 +277,7 @@ public class TreeDecomposer {
 	 * @param findElementInvocation
 	 * @return
 	 */
-	private String generateNameForGetterCalls(BlockStmt blockStmt, Node node, MethodCallExpr findElementInvocation) {
+	private String generateNameForAutoMethodCalls(BlockStmt blockStmt, Node node, MethodCallExpr findElementInvocation) {
 		//The third element contains the Locator invocation
 		MethodCallExpr locatorInvocation = findElementInvocation;
 		List<Node> nodes = locatorInvocation.getChildNodes();
@@ -312,7 +328,7 @@ public class TreeDecomposer {
 					if(methodCallExpr.toString().startsWith("By") && !methodCallExpr.toString().equals(firstLocator)) {
 						if(!inner) {
 							
-							String methodName = generateNameForGetterCalls(blockStmt,null,methodCallExpr);
+							String methodName = generateNameForAutoMethodCalls(blockStmt,null,methodCallExpr);
 							firstLocator = methodCallExpr.toString();
 							addPoDeclaretion(blockStmt,counter,(PODeclaration==null?"AutoPo":PODeclaration.getNameAsString()),methodName);
 							counter ++;
@@ -332,14 +348,11 @@ public class TreeDecomposer {
 		String methodName = null;
 		List<MethodCallExpr> methodCallExprList =  clonedNode.findAll(MethodCallExpr.class);
 		for (MethodCallExpr methodCallExpr : methodCallExprList) {
-			//System.err.println(methodCallExpr.toString());
 			if(methodCallExpr.toString().startsWith("By")) {
-				methodName = generateNameForGetterCalls(null, clonedNode, methodCallExpr);
+				methodName = generateNameForAutoMethodCalls(null, clonedNode, methodCallExpr);
 			}
 		}
-		MethodCallExpr innerExp = new MethodCallExpr("System.out.println(\"{ASSESSOR}:"+lastPageObject.getNameAsString()+":"+methodName+")");
-		innerExp.addArgument(new StringLiteralExpr("{ASSESSOR}:"+lastPageObject.getNameAsString()+":"+methodName));
-		blockStmt.get().addStatement(0,innerExp);
+		addPoDeclaretion(blockStmt.get(),0,(lastPageObject==null?"AutoPo":lastPageObject.getNameAsString()),methodName);
 		blockStmt.get().addStatement(0, new NameExpr(DELIMITER_BACK_TO_MAIN.replace(";", "")));
 	}
 		
@@ -1249,7 +1262,6 @@ public class TreeDecomposer {
 		
 		
 		MethodDeclaration clone = clusteredMethod.clone();
-		List<Node> list = clone.getBody().get().getChildNodes();
 		int stmIndex = 0;
 		int argsIndex=1;
 		for (Statement node : clone.getBody().get().getStatements()) {
@@ -1367,13 +1379,13 @@ public class TreeDecomposer {
 	 * @param findElementCall
 	 * @return
 	 */
-	private MethodDeclaration searchGetterInPO(ClassOrInterfaceDeclaration pageObject, String methodName) {
-		for(MethodDeclaration method : pageObject.findAll(MethodDeclaration.class)) {
-			if(method.getNameAsString().equals(methodName)) 
-				return method;
-		}
-		return null;
-	}
+//	private MethodDeclaration searchGetterInPO(ClassOrInterfaceDeclaration pageObject, String methodName) {
+//		for(MethodDeclaration method : pageObject.findAll(MethodDeclaration.class)) {
+//			if(method.getNameAsString().equals(methodName)) 
+//				return method;
+//		}
+//		return null;
+//	}
 		
 	/** Replace invalid character like - , ", : and . () for a methodDeclaration
 	 * 
@@ -1427,7 +1439,7 @@ public class TreeDecomposer {
 		List<Node> childs = blockInstruction.getChildNodes();
 		BlockStmt bodyMethod;
 		//The first instruction contains the variable declaration
-		ExpressionStmt stmt = (ExpressionStmt) childs.get(0);		
+//		ExpressionStmt stmt = (ExpressionStmt) childs.get(0);		
 //		VariableDeclarationExpr variableExpr = (VariableDeclarationExpr) stmt.getChildNodes().get(0);
 //		VariableDeclarator variable = (VariableDeclarator)variableExpr.getChildNodes().get(0);
 		//the variable child contains: Type of return value, variable name, operation
