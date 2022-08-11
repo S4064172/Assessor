@@ -474,8 +474,10 @@ public class TreeDecomposer {
 						//recover the pageObject from the class
 						lastPageObject = getPageObject(pageObjectName);
 						//if the pageObject is not found, then should be created
-						if(lastPageObject==null) 
+						if(lastPageObject==null) {
 							lastPageObject = createPageObject(pageObjectName);
+						}
+						pageObjectName = lastPageObject.getNameAsString();
 						//if the local variable inside the TestMethod isn't declared, then the declaration must be added
 						if(!localFieldDeclaration.containsKey(pageObjectName)) {
 							//The value represent the Variable name, using an _ to be better identified inside the code 
@@ -505,7 +507,7 @@ public class TreeDecomposer {
 			BlockStmt bodyMethod = methodToAddStatement.getBody().get();
 			if(clonedNode instanceof ExpressionStmt) { //2 option, is Assert or normal command
 								
-				if( lastPageObject!=null && checkLocator(clonedNode,lastLocatorUsed) && !clonedNode.toString().contains("assert") ) {
+				if( lastPageObject != null && (!waitForElementFound || checkLocator(clonedNode,lastLocatorUsed) && !clonedNode.toString().contains("assert")) ) {
 					//create Wait for element to prevent missing loading on async loading
 					lastLocatorUsed = createWaitForElement((ExpressionStmt) clonedNode,bodyMethod,waitForElementFound);
 					waitForElementFound = true;
@@ -693,9 +695,9 @@ public class TreeDecomposer {
 	}
 	
 	private Expression findArgument(MethodCallExpr methodCall) {
-		MethodCallExpr clone = methodCall;
+		MethodCallExpr clone = methodCall.clone();
 				
-		while (clone.getArguments().size() == 0) {
+		while (clone.getArguments().size() == 0 || !clone.getArgument(0).toString().contains("By")) {
 			clone = (MethodCallExpr) clone.getChildNodes().get(0);
 		}
 		
@@ -800,7 +802,7 @@ public class TreeDecomposer {
 	private ClassOrInterfaceDeclaration getPageObject(String pageObject) {
 		for(CompilationUnit unit : units)
 			for(ClassOrInterfaceDeclaration searchedClass : unit.findAll(ClassOrInterfaceDeclaration.class)) 		
-				if(searchedClass.getNameAsString().equals(pageObject))
+				if(searchedClass.getNameAsString().toLowerCase().equals(pageObject.toLowerCase()))
 					return searchedClass;		
 		return null;
 	}
