@@ -1206,10 +1206,18 @@ public class TreeDecomposer {
 		//if the methods contains some locator  we can not cluster them
 		if (countLocator(methodToSearch.getChildNodes()) > 0 || countLocator(clusteredMethod.getChildNodes()) > 0)
 			return null;
+		
+		List<Statement> statemets = methodToSearch.getBody().get().getStatements();
+		
+		//if the method has statement with no argument we cannot 
+		//performed the clustering since we cannot understand when 
+		//process those statemets
+		if(statemets.size() != methodToSearch.getParameters().size())
+			return null;
 		//System.err.println("classToSearch " + classToSearch.getNameAsString());
 		//System.err.println("clusteredMethod " + clusteredMethod.getNameAsString());
 		//System.err.println("methodToSearch " + methodToSearch.getNameAsString());
-		for (Statement statement : methodToSearch.getBody().get().getStatements()) {
+		for (Statement statement : statemets) {
 			//System.err.println("\tstatement " + statement);
 			//If there is a common statement I have to update only the newArgs list
 			int pos = containsStatement(statement,clusteredMethod.getBody().get().getStatements());
@@ -1238,6 +1246,7 @@ public class TreeDecomposer {
 					addedParams ++;
 					index++;
 				}
+				
 				clusteredMethod.getBody().get().addStatement(statement);
 				
 			}else {
