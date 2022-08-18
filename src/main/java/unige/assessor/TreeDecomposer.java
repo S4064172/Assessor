@@ -2,6 +2,7 @@ package unige.assessor;
 
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.BinaryExpr;
+import com.github.javaparser.ast.expr.BooleanLiteralExpr;
 import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.LiteralExpr;
@@ -35,6 +37,7 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
 
 public class TreeDecomposer {
 	//Delimiter generated from SeleniumIDE Extension
@@ -591,6 +594,7 @@ public class TreeDecomposer {
 				}else {					
 					BlockStmt blockParsed = new BlockStmt();
 					bodyMethod.addStatement(blockParsed);
+					waitForElementFound = false;
 					for(Node child : blockInstruction.getChildNodes()) {
 						ExpressionStmt expStmt = (ExpressionStmt)child.clone();
 						analyzeMethodArguments(expStmt,values,arguments);
@@ -1105,7 +1109,12 @@ public class TreeDecomposer {
 	 *@return pos: the position of the argument
 	 */
 	private int containsStatement(Statement statementToSearch, List<Statement> statements) {
-		String stm = statementToSearch.toString().replaceAll("key[1-9]*", "");
+		String stm = null;
+		
+		if(statementToSearch instanceof IfStmt)
+			stm = ((IfStmt) statementToSearch).getThenStmt().toString().replaceAll("key[1-9]*", "");
+		else 
+			 stm = statementToSearch.toString().replaceAll("key[1-9]*", "");
 		int pos = 0;
 		for (Statement statement : statements) {
 			Statement analize = statement;
@@ -1116,13 +1125,13 @@ public class TreeDecomposer {
 			if(analize.toString().replaceAll("key[1-9]*", "").equals(stm))
 				//only if the method has an argument the method return the pos
 				
-				if (analize.toString().contains("key"))
+//				if (analize.toString().contains("key"))
 					return pos;
-				else 
-					return -2;
+//				else 
+//					return -2;
 			
 			//only if the method has an argument we increment the counter
-			if(analize.toString().contains("key"))
+//			if(analize.toString().contains("key"))
 				pos++;
 		}
 		return -1;
@@ -1155,6 +1164,119 @@ public class TreeDecomposer {
 		return countLocator;
 	}
 	
+	/**
+	 * This function is used to add the missing arguments useful to manage the statement that has no argument
+	 * moreover, the function add the IF condition in order to make optional all the statements
+	 * 
+	 * @param methodToModify
+	 * @param argTypes
+	 * @param argName
+	 */
+	private void addMissingArgument(MethodDeclaration methodToModify,List<Node> argTypes, List<NameExpr> argName) {
+		MethodDeclaration clone = methodToModify.clone();
+		
+		//keep the position of the statements
+		int stmIndex = 0;
+		//keep the number of the args used
+		int argsIndex = methodToModify.getParameters().size()+1;
+		
+		for (Statement node : clone.getBody().get().getStatements()) {
+
+			//in this case we are parsing a statement without arguments
+			//so we add a boolean one
+			if ( !(node instanceof IfStmt) &&  !node.toString().contains("(key")) {
+				
+				Expression nullCheck = new BinaryExpr(new NameExpr("key"+(argsIndex)), new BooleanLiteralExpr(false), BinaryExpr.Operator.NOT_EQUALS);
+				IfStmt ifstm = new IfStmt(nullCheck , node, null);
+				methodToModify.getBody().get().setStatement(stmIndex, ifstm);	
+				Parameter parameter = new Parameter();
+				parameter.setType("boolean");		
+				parameter.setName("key"+argsIndex);
+				methodToModify.addParameter(parameter);
+				
+				argName.add(new NameExpr("key"+argsIndex));
+				argTypes.add(new NameExpr("true"));
+				
+				argsIndex ++;
+			}
+			
+			if ( !(node instanceof IfStmt) &&  node.toString().contains("(key")) {
+				String key = ((MethodCallExpr) node.getChildNodes().get(0)).getArguments().get(0).toString();
+				Expression nullCheck = new BinaryExpr(new NameExpr(key), new NullLiteralExpr(), BinaryExpr.Operator.NOT_EQUALS);
+				IfStmt ifstm = new IfStmt(nullCheck , node, null);
+				methodToModify.getBody().get().setStatement(stmIndex, ifstm);		
+			}
+			
+			if(node instanceof IfStmt)
+				argsIndex ++;
+			
+			stmIndex++;
+		}
+	}
+	
+	
+	/**
+	 * 
+	 * @param method
+	 * @return
+	 */
+	private List<Node> createNewArgsList(MethodDeclaration method) {
+		ClassOrInterfaceType stringType = new ClassOrInterfaceType("String");
+				
+		//is used to store the new parameters order
+		List<Node> newArgs = new LinkedList<Node>();
+		for (Parameter param : method.getParameters()) {
+			if (param.getType().equals(stringType))
+				newArgs.add(new NameExpr("null"));
+			else
+				newArgs.add(new NameExpr("false"));
+		}
+		
+		return newArgs;
+	}
+	
+	/**
+	 * 
+	 * @param methodList
+	 * @param methodToSearch
+	 * @param clusteredMethod
+	 * @param classToSearch
+	 * @param clusteredMethodParamiters
+	 */
+	private void updateMethodCalls(
+			List<MethodCallExpr> methodList,MethodDeclaration methodToSearch,
+			MethodDeclaration clusteredMethod,ClassOrInterfaceDeclaration classToSearch,
+			int clusteredMethodParamiters) {
+		ClassOrInterfaceType stringType = new ClassOrInterfaceType("String");
+		
+		for (MethodCallExpr methodCallExpr : methodList) {
+					
+			if(!methodCallExpr.getScope().isPresent())
+				continue;
+			
+			System.err.println("fouded: " +methodCallExpr.getScope().get().getChildNodes().get(0).toString()+"."+methodCallExpr.getNameAsString());
+			if ((methodCallExpr.getScope().get().getChildNodes().get(0).toString()+"."+methodCallExpr.getNameAsString())
+					.equals("_"+classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString())) {
+//				System.err.println("methodCallExpr " + methodCallExpr);
+				
+				int counter = methodCallExpr.getArguments().size();
+				while (counter < clusteredMethod.getParameters().size()) {
+					if (clusteredMethod.getParameters().get(counter).getType().equals(stringType))
+						methodCallExpr.addArgument(new NameExpr("null"));
+					else
+						if(counter < clusteredMethodParamiters) {
+							methodCallExpr.addArgument(new NameExpr("true"));
+						}else {
+							methodCallExpr.addArgument(new NameExpr("false"));
+						}
+							
+					counter++;
+				}
+				System.err.println("methodCallExpr " + methodCallExpr);
+			}
+		}
+	}
+	
 	/**This function is used to cluster the PO-method that have the same name
 	 * Once we found a po-method with the same name, we union the two po-method and 
 	 * reorganize the parameters of the two methods
@@ -1185,74 +1307,65 @@ public class TreeDecomposer {
 		
 		if (clusteredMethod == null)
 			return null;
-			
-		//is used to store the new parameters order
-		List<Node> newArgs = new LinkedList<Node>();
-		for (Parameter param : clusteredMethod.getParameters()) {
-			newArgs.add(new NameExpr("null"));
-		}
-		
-		//Perform the cluster between the method
-		int clusteredMethodParamiters = clusteredMethod.getParameters().size();
-		//used to update the name of the parameters
-		int addedParams = 1;
-		
-		int index = 0;
-		
-		//If the methods did not have at least one parameter we can not cluster them
-		if (clusteredMethodParamiters == 0 || methodToSearch.getParameters().size() == 0)
-			return null;
 		
 		//if the methods contains some locator  we can not cluster them
 		if (countLocator(methodToSearch.getChildNodes()) > 0 || countLocator(clusteredMethod.getChildNodes()) > 0)
 			return null;
 		
-		List<Statement> statemets = methodToSearch.getBody().get().getStatements();
-		
-		//if the method has statement with no argument we cannot 
+		//if the method has statements with no argument we cannot 
 		//performed the clustering since we cannot understand when 
-		//process those statemets
-		if(statemets.size() != methodToSearch.getParameters().size())
-			return null;
-		//System.err.println("classToSearch " + classToSearch.getNameAsString());
-		//System.err.println("clusteredMethod " + clusteredMethod.getNameAsString());
-		//System.err.println("methodToSearch " + methodToSearch.getNameAsString());
-		for (Statement statement : statemets) {
-			//System.err.println("\tstatement " + statement);
+		//process those statements so we add a boolean argument to discriminate 
+		//that statements
+	
+		System.err.println("clusteredMethod: "+ clusteredMethod.getNameAsString());
+		System.err.println("methodToSearch: "+ methodToSearch.getNameAsString());
+		addMissingArgument(clusteredMethod,new LinkedList<Node>(),new LinkedList<NameExpr>());
+		addMissingArgument(methodToSearch,argTypes,argName);
+		System.err.println("clusteredMethod-params: "+ clusteredMethod.getParameters());
+		System.err.println("methodToSearch-params: "+ methodToSearch.getParameters());
+		
+		List<Node> newArgs = createNewArgsList(clusteredMethod);
+		
+		//Perform the cluster between the method
+		int clusteredMethodParamiters = clusteredMethod.getParameters().size();
+		//used to update the name of the parameters
+		
+		
+		//keep trace of the number of the added params
+		int addedParams = 1;
+		//keep trace of the number of the statement processed
+		int index = 0;
+						
+		//perform the union between the clusteredMethod and the methodToSearch
+		for (Statement statement : methodToSearch.getBody().get().getStatements()) {
+			System.err.println("statement: "+ statement);
 			//If there is a common statement I have to update only the newArgs list
 			int pos = containsStatement(statement,clusteredMethod.getBody().get().getStatements());
-			//System.err.println("\tpos " + pos);
-			
-			if(pos == -2) continue;
-			
+			List<NameExpr> expr = new LinkedList<NameExpr>(new HashSet<>(statement.findAll(NameExpr.class)));			
 			if(pos == -1) {
 				
-				List<NameExpr> expr = statement.findAll(NameExpr.class);
+				System.err.println("expr: "+expr);
 				for (NameExpr exp : expr) {
-					Parameter result = null;
+					Parameter parameter = null;
 					//Retrieve the type of the new argument
 					for (Parameter param : methodToSearch.getParameters()) {
 						if (param.toString().endsWith(exp.toString()))
-							result = param;
+							parameter = param;
 					}
 					
 					//change the name of the parameter & argument
 					exp.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
-					result.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
+					parameter.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
 					
-					clusteredMethod.addParameter(result);
+					clusteredMethod.addParameter(parameter);
 					newArgs.add(argTypes.get(index));
 					
 					addedParams ++;
 					index++;
 				}
-				
 				clusteredMethod.getBody().get().addStatement(statement);
-				
 			}else {
 				
-				List<NameExpr> expr = statement.findAll(NameExpr.class);
-				//System.err.println("\texpr " + expr);
 				for (NameExpr exp : expr) {
 					newArgs.set(pos, argTypes.get(index));
 					index++;
@@ -1270,44 +1383,11 @@ public class TreeDecomposer {
 				argTypes.add(newArgs.get(i));
 		}
 		
-		
-		
-		MethodDeclaration clone = clusteredMethod.clone();
-		int stmIndex = 0;
-		int argsIndex=1;
-		for (Statement node : clone.getBody().get().getStatements()) {
-//			System.err.println(node);
-			if ( !(node instanceof IfStmt) &&  node.toString().contains("(key")) {
-				
-				Expression nullCheck = new BinaryExpr(new NameExpr("key"+(argsIndex++)), new NullLiteralExpr(), BinaryExpr.Operator.NOT_EQUALS);
-				IfStmt ifstm = new IfStmt(nullCheck , node, null);
-				clusteredMethod.getBody().get().setStatement(stmIndex, ifstm);				
-			}
-			
-			if(node instanceof IfStmt)
-				argsIndex ++;
-			stmIndex++;
-			
-			
-		}
-		
-		
+						
 		//Update the usage of the cluster method in all the tests
 		List<MethodCallExpr> methodList = methodTestSuite.getParentNode().get().findAll(MethodCallExpr.class);
-		//System.err.println("methodToSearch " + classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString());
-		//System.err.println("classToSearch " + classToSearch.getNameAsString());
-		for (MethodCallExpr methodCallExpr : methodList) {
-			if (methodCallExpr.toString().contains(classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString())) {
-				//System.err.println("methodCallExpr " + methodCallExpr);
-				int counter = clusteredMethodParamiters;
-				while (counter < clusteredMethod.getParameters().size()) {
-					methodCallExpr.addArgument(new NameExpr("null"));
-					counter++;
-				}
-				//System.err.println("methodCallExpr " + methodCallExpr);
-			}
-		}
-
+		updateMethodCalls(methodList,methodToSearch,clusteredMethod,classToSearch,clusteredMethodParamiters);
+		
 		return clusteredMethod;
 	}
 	
