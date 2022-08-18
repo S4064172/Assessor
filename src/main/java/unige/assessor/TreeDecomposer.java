@@ -1254,11 +1254,11 @@ public class TreeDecomposer {
 			if(!methodCallExpr.getScope().isPresent())
 				continue;
 			
-			System.err.println("fouded: " +methodCallExpr.getScope().get().getChildNodes().get(0).toString()+"."+methodCallExpr.getNameAsString());
+//			System.err.println("founded: " +methodCallExpr.getScope().get().getChildNodes().get(0).toString()+"."+methodCallExpr.getNameAsString());
 			if ((methodCallExpr.getScope().get().getChildNodes().get(0).toString()+"."+methodCallExpr.getNameAsString())
 					.equals("_"+classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString())) {
 //				System.err.println("methodCallExpr " + methodCallExpr);
-				
+				System.err.println("methodCallExpr - before " + methodCallExpr);
 				int counter = methodCallExpr.getArguments().size();
 				while (counter < clusteredMethod.getParameters().size()) {
 					if (clusteredMethod.getParameters().get(counter).getType().equals(stringType))
@@ -1272,7 +1272,7 @@ public class TreeDecomposer {
 							
 					counter++;
 				}
-				System.err.println("methodCallExpr " + methodCallExpr);
+				System.err.println("methodCallExpr - after" + methodCallExpr);
 			}
 		}
 	}
@@ -1341,32 +1341,55 @@ public class TreeDecomposer {
 			System.err.println("statement: "+ statement);
 			//If there is a common statement I have to update only the newArgs list
 			int pos = containsStatement(statement,clusteredMethod.getBody().get().getStatements());
-			List<NameExpr> expr = new LinkedList<NameExpr>(new HashSet<>(statement.findAll(NameExpr.class)));			
+			
 			if(pos == -1) {
-				
-				System.err.println("expr: "+expr);
-				for (NameExpr exp : expr) {
+				List<NameExpr> argumentListNoDup = new LinkedList<NameExpr>(new HashSet<>(statement.findAll(NameExpr.class)));	
+				List<NameExpr> argumentList = statement.findAll(NameExpr.class);	
+				System.err.println("-----------------------------------------");
+				System.err.println("argumentList: "+argumentList);
+				int newIndex = -1;
+				for (NameExpr exp : argumentList) {
 					Parameter parameter = null;
 					//Retrieve the type of the new argument
+					System.err.println("exp:"+ exp);
+					System.err.println("methodToSearch.getParameters():"+ methodToSearch.getParameters());
 					for (Parameter param : methodToSearch.getParameters()) {
-						if (param.toString().endsWith(exp.toString()))
-							parameter = param;
+						if (param.toString().endsWith(exp.toString())) {
+							parameter = param.clone();
+							break;
+						}
 					}
 					
 					//change the name of the parameter & argument
-					exp.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
-					parameter.setName(new SimpleName("key"+(clusteredMethodParamiters + addedParams)));
+					if(argumentListNoDup.contains(exp)) {
+						//create the new index
+						newIndex = clusteredMethodParamiters + addedParams;
+						
+						//update the param of the clutered method
+						parameter.setName(new SimpleName("key"+newIndex));
+						clusteredMethod.addParameter(parameter);
+						
+						//update the param of the argTypes method
+						newArgs.add(argTypes.get(index));
+						
+						
+						addedParams ++;
+						index++;
+						
+						System.err.println("Removing-->: "+exp);
+						argumentListNoDup.remove(exp);
+					}
 					
-					clusteredMethod.addParameter(parameter);
-					newArgs.add(argTypes.get(index));
+					System.err.println("new EXP:"+ "key"+newIndex);
+					exp.setName(new SimpleName("key"+newIndex));
 					
-					addedParams ++;
-					index++;
+
 				}
+				
 				clusteredMethod.getBody().get().addStatement(statement);
 			}else {
-				
-				for (NameExpr exp : expr) {
+				List<NameExpr> argumentListNoDup = new LinkedList<NameExpr>(new HashSet<>(statement.findAll(NameExpr.class)));	
+				for (NameExpr exp : argumentListNoDup) {
 					newArgs.set(pos, argTypes.get(index));
 					index++;
 				}
