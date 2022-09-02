@@ -3,6 +3,7 @@ package unige.assessor;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
@@ -297,11 +299,7 @@ public class TreeDecomposer {
 			else
 				baseGetter = getBaseNameForMethod(node,locatorInvocation);
 		
-		if("click_XPATH_licontains,days".equals(baseGetter+nodes.get(1).toString().toUpperCase()+"_"+cleanCharacterForMethod(nodes.get(2).toString()))) {
-			System.err.println(1);
-		}
-		
-		System.err.println("AutoMethodName: "+baseGetter+nodes.get(1).toString().toUpperCase()+"_"+cleanCharacterForMethod(nodes.get(2).toString()));
+		//System.err.println("AutoMethodName: "+baseGetter+nodes.get(1).toString().toUpperCase()+"_"+cleanCharacterForMethod(nodes.get(2).toString()));
 		return baseGetter+nodes.get(1).toString().toUpperCase()+"_"+cleanCharacterForMethod(nodes.get(2).toString());
 	}
 		
@@ -876,10 +874,7 @@ public class TreeDecomposer {
 			statement+= argumentParser(values,innerValues);
 		}
 		statement+=");";		
-		if(statement.equals("click_XPATH_licontains,days();")) {
-			System.err.println(1);
-		}
-		System.err.println("statement: "+statement);
+		//System.err.println("statement: "+statement);
 		methodWhoCalls.getBody().get().addStatement(statement);		
 	}
 
@@ -944,7 +939,7 @@ public class TreeDecomposer {
 		return newClass;
 	}	
  	/**
- 	 *	The method cleanups the methodToAdd and it removes all the duplicate commands.
+ 	 *	The method cleanups the methodToAdd and removes all the duplicate commands.
  	 *	The method keeps:
  	 * 		- the first statement
  	 * 		- the first argNames (plus the argNameInner)
@@ -1012,6 +1007,47 @@ public class TreeDecomposer {
 		}
  	}
  	
+ 	private void relaceLocator(Statement statement) {
+ 		//The declaration statements are the only one that should not change
+//		if((statement.findAll(VariableDeclarationExpr.class)).size() ==0) {
+			List<MethodCallExpr> listOfExp = statement.findAll(MethodCallExpr.class);
+			for (MethodCallExpr exp : listOfExp) {
+				//System.err.println("MethodCallExpr: "+exp);
+				
+				if(exp.toString().contains("findElement") && exp.getArguments().size() > 0) {
+					//System.err.println("found: "+exp);
+					if(exp.getArguments().toString().contains("By")) {
+						Expression newArgs = new NameExpr("elem");
+						//System.err.println("old exp: "+exp);
+						NodeList<Expression> newListArgs = new NodeList<Expression>();
+						newListArgs.add(newArgs);
+						exp.setArguments(newListArgs);
+						//System.err.println("new exp: "+exp);
+					}
+				}	
+			}
+//		}
+ 	}
+ 	
+ 	/**This method replaces the By instruction with the elem keywords
+ 	 * 
+ 	 * @param methodToAdd
+ 	 */
+ 	private void relaceLocatorWithElemKeyWord(MethodDeclaration methodToAdd) { 		
+ 		for (Statement statement : methodToAdd.getBody().get().getStatements()) {
+			//System.err.println("Statement: "+statement);
+			
+			if(statement instanceof BlockStmt) {
+				//System.err.println("Found blockStmt:");
+				for (Statement blockStatement : ((BlockStmt) statement).getStatements()) {
+					relaceLocator(blockStatement);
+				}
+			}else {
+				relaceLocator(statement);
+			}
+		}
+ 	}
+ 	
  	/** The method is modified and the list of parameters is added in the declaration
  	 * If the method already exist in the class, then the method is returned
  	 * else the method is added to the method list of the class. If there is another method with the same name but different body
@@ -1029,6 +1065,8 @@ public class TreeDecomposer {
 			MethodDeclaration methodTestSuite) {
 		
 		cleanupMethod(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
+		relaceLocatorWithElemKeyWord(methodToAdd);
+		
 		
 		methodAddArguments(methodToAdd,argTypes,argName,argTypesInner,argNameInner);
 		MethodDeclaration alreadyInMethod = getMethodAlreadyIn(methodToAdd,addToClass);
@@ -1283,7 +1321,7 @@ public class TreeDecomposer {
 			if ((methodCallExpr.getScope().get().getChildNodes().get(0).toString()+"."+methodCallExpr.getNameAsString())
 					.equals("_"+classToSearch.getNameAsString()+"."+methodToSearch.getNameAsString())) {
 //				System.err.println("methodCallExpr " + methodCallExpr);
-				System.err.println("methodCallExpr - before " + methodCallExpr);
+				//System.err.println("methodCallExpr - before " + methodCallExpr);
 				int counter = methodCallExpr.getArguments().size();
 				while (counter < clusteredMethod.getParameters().size()) {
 					if (clusteredMethod.getParameters().get(counter).getType().equals(stringType))
@@ -1297,7 +1335,7 @@ public class TreeDecomposer {
 							
 					counter++;
 				}
-				System.err.println("methodCallExpr - after" + methodCallExpr);
+				//System.err.println("methodCallExpr - after" + methodCallExpr);
 			}
 		}
 	}
@@ -1341,25 +1379,21 @@ public class TreeDecomposer {
 		//performed the clustering since we cannot understand when 
 		//process those statements so we add a boolean argument to discriminate 
 		//that statements
-	
-		if("setContactsInformation".equals(clusteredMethod.getNameAsString())) {
-			System.err.println(1);
-		}
-		
-		System.err.println("clusteredMethod-params: "+ clusteredMethod.getParameters());
-		System.err.println("methodToSearch-params: "+ methodToSearch.getParameters());
-		System.err.println("argTypes: "+argTypes);
-		System.err.println("argName:"+argName);
-		System.err.println("clusteredMethod: "+ clusteredMethod.getNameAsString());
-		System.err.println("methodToSearch: "+ methodToSearch.getNameAsString());
+			
+		//System.err.println("clusteredMethod-params: "+ clusteredMethod.getParameters());
+		//System.err.println("methodToSearch-params: "+ methodToSearch.getParameters());
+		//System.err.println("argTypes: "+argTypes);
+		//System.err.println("argName:"+argName);
+		//System.err.println("clusteredMethod: "+ clusteredMethod.getNameAsString());
+		//System.err.println("methodToSearch: "+ methodToSearch.getNameAsString());
 		addMissingArgument(clusteredMethod,new LinkedList<Node>(),new LinkedList<NameExpr>());
 		addMissingArgument(methodToSearch,argTypes,argName);
-		System.err.println("clusteredMethod-params: "+ clusteredMethod.getParameters());
-		System.err.println("methodToSearch-params: "+ methodToSearch.getParameters());
-		System.err.println("argTypes: "+argTypes);
-		System.err.println("argName:"+argName);
+		//System.err.println("clusteredMethod-params: "+ clusteredMethod.getParameters());
+		//System.err.println("methodToSearch-params: "+ methodToSearch.getParameters());
+		//System.err.println("argTypes: "+argTypes);
+		//System.err.println("argName:"+argName);
 		List<Node> newArgs = createNewArgsList(clusteredMethod);
-		System.err.println("newArgs: "+newArgs);
+		//System.err.println("newArgs: "+newArgs);
 		//Perform the cluster between the method
 		int clusteredMethodParamiters = clusteredMethod.getParameters().size();
 		//used to update the name of the parameters
@@ -1370,7 +1404,7 @@ public class TreeDecomposer {
 								
 		//perform the union between the clusteredMethod and the methodToSearch
 		for (Statement statement : methodToSearch.getBody().get().getStatements()) {
-			System.err.println("statement: "+ statement);
+			//System.err.println("statement: "+ statement);
 			//If there is a common statement I have to update only the newArgs list
 			int statementPos = containsStatement(statement,clusteredMethod.getBody().get().getStatements());
 			
@@ -1407,12 +1441,12 @@ public class TreeDecomposer {
 						
 						addedParams ++;
 												
-						System.err.println("Removing-->: "+exp);
+						//System.err.println("Removing-->: "+exp);
 						argumentListNoDup.remove(exp);
-						System.err.println("newArgs: "+newArgs);
+						//System.err.println("newArgs: "+newArgs);
 					}
 					
-					System.err.println("new EXP:"+ "key"+newIndex);
+					//System.err.println("new EXP:"+ "key"+newIndex);
 					exp.setName(new SimpleName("key"+newIndex));
 					
 
@@ -1423,9 +1457,9 @@ public class TreeDecomposer {
 				int pos = Integer.parseInt(((IfStmt) statement).getCondition().getChildNodes().get(0).toString().replace("key", ""));
 				newArgs.set(statementPos, argTypes.get(pos-1));
 			}
-			System.err.println("newArgs: "+newArgs);
+			//System.err.println("newArgs: "+newArgs);
 		}
-		System.err.println("newArgs: "+newArgs);
+		//System.err.println("newArgs: "+newArgs);
 		
 		//Update the argsType list
 		for(int i = 0; i < newArgs.size(); i++) {
@@ -1434,7 +1468,7 @@ public class TreeDecomposer {
 			else
 				argTypes.add(newArgs.get(i));
 		}
-		System.err.println("newArgs: "+newArgs);
+		//System.err.println("newArgs: "+newArgs);
 						
 		//Update the usage of the cluster method in all the tests
 		List<MethodCallExpr> methodList = methodTestSuite.getParentNode().get().findAll(MethodCallExpr.class);
