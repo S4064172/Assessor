@@ -299,7 +299,7 @@ public class TreeDecomposer {
 			else
 				baseGetter = getBaseNameForMethod(node,locatorInvocation);
 		
-		//System.err.println("AutoMethodName: "+baseGetter+nodes.get(1).toString().toUpperCase()+"_"+cleanCharacterForMethod(nodes.get(2).toString()));
+		//a("AutoMethodName: "+baseGetter+nodes.get(1).toString().toUpperCase()+"_"+cleanCharacterForMethod(nodes.get(2).toString()));
 		return baseGetter+nodes.get(1).toString().toUpperCase()+"_"+cleanCharacterForMethod(nodes.get(2).toString());
 	}
 		
@@ -586,7 +586,7 @@ public class TreeDecomposer {
 					//if the method contains a search for an element, then create the statement, it should never be empty because contains at least 1 assert call
 					if(childInstruction.get(0).toString().contains("driver.findElement")) { 
 							generateAssertCallBlockStmt(methodTestSuite,lastPageObject, localFieldDeclaration.get(lastPageObject.getNameAsString()), 
-									 blockInstruction,values,arguments,methodToAddStatement.getNameAsString(),lastLocatorUsed);					
+									 blockInstruction,values,arguments,methodToAddStatement.getNameAsString(),lastLocatorUsed,waitForElementFound);					
 					}else { //nothing special with this assert
 						bodyMethod = methodTestSuite.getBody().get();
 						bodyMethod.addStatement(blockInstruction);	
@@ -600,13 +600,13 @@ public class TreeDecomposer {
 				}else {					
 					BlockStmt blockParsed = new BlockStmt();
 					bodyMethod.addStatement(blockParsed);
-					waitForElementFound = false;
+					boolean waitForElementFoundInBlock = waitForElementFound;
 					for(Node child : blockInstruction.getChildNodes()) {
 						ExpressionStmt expStmt = (ExpressionStmt)child.clone();
 						analyzeMethodArguments(expStmt,values,arguments);
 						if (checkLocator(child,lastLocatorUsed)) {
-							lastLocatorUsed = createWaitForElement((ExpressionStmt) expStmt,blockParsed,waitForElementFound);
-							waitForElementFound = true;
+							lastLocatorUsed = createWaitForElement((ExpressionStmt) expStmt,blockParsed,waitForElementFoundInBlock);
+							waitForElementFoundInBlock = true;
 						}
 							
 						blockParsed.addStatement(expStmt);
@@ -728,7 +728,7 @@ public class TreeDecomposer {
 //				methodCall = findByInstruction(cloned);
 //			}
 //		}	
-		System.err.println(cloned.getChildNodes());
+//		System.err.println(cloned.getChildNodes());
 		methodCall = findByInstruction(cloned.getChildNodes());
 		if(methodCall == null) {
 			return "";
@@ -1613,7 +1613,8 @@ public class TreeDecomposer {
 	private void generateAssertCallBlockStmt(MethodDeclaration methodTestSuite,ClassOrInterfaceDeclaration pageObject,
 			String lastPageVariable,
 			 BlockStmt blockInstruction,List<Node> values,List<NameExpr> argumentsName,
-			 String methodName, String lastLocator) {		
+			 String methodName, String lastLocator,
+			 boolean waitForElementFound) {		
 		List<Node> childs = blockInstruction.getChildNodes();
 		BlockStmt bodyMethod;
 		//The first instruction contains the variable declaration
@@ -1649,7 +1650,7 @@ public class TreeDecomposer {
 				ExpressionStmt expStmt = (ExpressionStmt)child.clone();
 				analyzeMethodArguments(expStmt,values,argumentsName);
 				if (checkLocator(child,lastLocator))
-					lastLocator = createWaitForElement((ExpressionStmt) child,bodyMethod,false);
+					lastLocator = createWaitForElement((ExpressionStmt) child,bodyMethod,waitForElementFound);
 				bodyMethod.addStatement(expStmt);
 			}
 			lastNode = child;
