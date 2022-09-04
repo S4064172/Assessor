@@ -1012,17 +1012,17 @@ public class TreeDecomposer {
 //		if((statement.findAll(VariableDeclarationExpr.class)).size() ==0) {
 			List<MethodCallExpr> listOfExp = statement.findAll(MethodCallExpr.class);
 			for (MethodCallExpr exp : listOfExp) {
-				//System.err.println("MethodCallExpr: "+exp);
+				System.err.println("MethodCallExpr: "+exp);
 				
 				if(exp.toString().contains("findElement") && exp.getArguments().size() > 0) {
-					//System.err.println("found: "+exp);
-					if(exp.getArguments().toString().contains("By")) {
+					System.err.println("found: "+exp);
+					if(exp.getArguments().get(0).toString().startsWith("By")) {
 						Expression newArgs = new NameExpr("elem");
-						//System.err.println("old exp: "+exp);
+						System.err.println("old exp: "+exp);
 						NodeList<Expression> newListArgs = new NodeList<Expression>();
 						newListArgs.add(newArgs);
 						exp.setArguments(newListArgs);
-						//System.err.println("new exp: "+exp);
+						System.err.println("new exp: "+exp);
 					}
 				}	
 			}
@@ -1035,10 +1035,10 @@ public class TreeDecomposer {
  	 */
  	private void relaceLocatorWithElemKeyWord(MethodDeclaration methodToAdd) { 		
  		for (Statement statement : methodToAdd.getBody().get().getStatements()) {
-			//System.err.println("Statement: "+statement);
+			System.err.println("Statement: "+statement);
 			
 			if(statement instanceof BlockStmt) {
-				//System.err.println("Found blockStmt:");
+				System.err.println("Found blockStmt:");
 				for (Statement blockStatement : ((BlockStmt) statement).getStatements()) {
 					relaceLocator(blockStatement);
 				}
