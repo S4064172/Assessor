@@ -1,0 +1,8 @@
+Ciao test
+{
+file
+
+uguale
+
+s
+}

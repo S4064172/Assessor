@@ -1,0 +1,15 @@
+24 Jul 2022, 10:19:59 - Warning: Method name duplicate in PO: Login the method ineer1 is renamed in  ineer1_1
+24 Jul 2022, 10:19:59 - Warning: The method declaration checkCorrectPage in the pageObject: Login is empty. So it will be discharged
+24 Jul 2022, 10:19:59 - Warning: The method declaration checkCorrectPage in the pageObject: Login is empty. So it will be discharged
+24 Jul 2022, 10:19:59 - Warning: Method name duplicate in PO: Login the method TEST1 is renamed in  TEST1_1
+24 Jul 2022, 10:19:59 - Warning: Method name duplicate in PO: Login the method TEST1_1 is renamed in  TEST1_1_1
+24 Jul 2022, 10:19:59 - Warning: For PO:Login method ineer1 and ineer1_1 unified under the name ineer1_1 since bodies and paramters list are identical
+24 Jul 2022, 10:19:59 - Warning: Method name duplicate in PO: Login the method TEST1 is renamed in  TEST1_2
+24 Jul 2022, 10:19:59 - Warning: The method declaration checkCorrectPage in the pageObject: Login is empty. So it will be discharged
+24 Jul 2022, 10:19:59 - Warning: For PO:Login method checkCorrectPage and TEST1_1_1 unified under the name TEST1_1_1 since bodies and paramters list are identical
+24 Jul 2022, 10:19:59 - Warning: Method name duplicate in PO: Login the method inner2 is renamed in  inner2_1
+24 Jul 2022, 10:19:59 - Warning: The method declaration checkCorrectPage in the pageObject: Login is empty. So it will be discharged
+24 Jul 2022, 10:19:59 - Warning: The method declaration checkCorrectPage in the pageObject: Login is empty. So it will be discharged
+24 Jul 2022, 10:19:59 - Warning: The method declaration TEST1 in the pageObject: Login is empty. So it will be discharged
+24 Jul 2022, 10:19:59 - Warning: For PO:Login method TEST1 and TEST1_1_1 unified under the name TEST1_1_1 since bodies and paramters list are identical
+24 Jul 2022, 10:19:59 - Warning: For PO:Login method ineer1 and ineer1_1 unified under the name ineer1_1 since bodies and paramters list are identical

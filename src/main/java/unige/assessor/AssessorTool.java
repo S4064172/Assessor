@@ -19,29 +19,9 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeS
 
 public class AssessorTool {
 
-	public static void main(String[] args) throws IOException{
-		boolean normalize = false;
-		String poPrefix = "";
-
-		String inputDir = args[0];
-		String outputDir = inputDir+"/Output/";
 	
-		File[] matchingFiles = searchFilesToAnalyze(inputDir);
-		
-		TreeDecomposer selDecomposer =  new TreeDecomposer(normalize,poPrefix);
-		
-		for(File file : matchingFiles) {
-			CompilationUnit compilationUnit = recoverCompilationUnit(file);			
-			selDecomposer.analyzeCompilationUnit(compilationUnit);	
-		}
-		
-		writeNewClass(outputDir, selDecomposer);
-		
-		writeLogs(outputDir, selDecomposer);
-		System.out.println("Refactoring complete");
-	}
 
-	private static void writeLogs(String outputDir, TreeDecomposer selDecomposer) throws IOException {
+	public void writeLogs(String outputDir, TreeDecomposer selDecomposer) throws IOException {
 		if(selDecomposer.getLogs().size()>0) {				
 			FileWriter writer = new FileWriter(outputDir+"logs.txt");
 			for(String row : selDecomposer.getLogs()) {
@@ -52,7 +32,7 @@ public class AssessorTool {
 		}
 	}
 
-	private static void writeNewClass(String outputDir, TreeDecomposer selDecomposer) throws IOException {
+	public void writeNewClass(String outputDir, TreeDecomposer selDecomposer) throws IOException {
 		final String poDirectory = "PO/";
 		File directory = new File(outputDir+poDirectory);
 		if (!directory.exists())
@@ -69,7 +49,7 @@ public class AssessorTool {
 		}
 	}
 
-	private static File[] searchFilesToAnalyze(String inputDir) {
+	public File[] searchFilesToAnalyze(String inputDir) {
 		File dir = new File(inputDir);
 		
 		File[] matchingFiles = dir.listFiles(new FilenameFilter() {
@@ -80,7 +60,7 @@ public class AssessorTool {
 		return matchingFiles;
 	}
 	
-	private static CompilationUnit recoverCompilationUnit(File file) throws IOException {
+	public CompilationUnit recoverCompilationUnit(File file) throws IOException {
 		// Set up a minimal type solver that only looks at the classes used to run this sample.
         CombinedTypeSolver combinedTypeSolver = new CombinedTypeSolver();
         combinedTypeSolver.add(new ReflectionTypeSolver());

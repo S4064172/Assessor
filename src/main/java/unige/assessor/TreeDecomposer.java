@@ -320,34 +320,48 @@ public class TreeDecomposer {
 		int counter = 0;
 		BlockStmt clone = blockStmt.clone();
 		
+		System.err.println("blockStmt: "+blockStmt);
+		System.err.println("firstLocator: "+firstLocator);
+		System.err.println("PODeclaration: "+PODeclaration);
+		System.err.println("isInner: "+isInner);
+		
 		//if there is less than 2 locator, return false
 		if(countLocator(clone.getChildNodes()) < 2)
 			return false;
 		
 		for (Node node : clone.getChildNodes()) {
-			//System.err.println(node.toString());
+			System.err.println(node.toString());
 			if (/*node.toString().contains(DELIMITER_BACK_TO_MAIN) || node.toString().contains(DELIMITER_BACK_TO_FATHER) ||*/ node.toString().contains(DELIMITER_PO_DECLARATION)) {
 				break;
 			}
 			if(node instanceof ExpressionStmt) {
 				List<MethodCallExpr> exps =  node.findAll(MethodCallExpr.class);
 				for (MethodCallExpr methodCallExpr : exps) {
-					//System.err.println(methodCallExpr.toString());
+//					System.err.println(methodCallExpr.toString());
+//					System.err.println(firstLocator);
 					if(methodCallExpr.toString().startsWith("By") && !methodCallExpr.toString().equals(firstLocator)) {
 						if(!inner) {
-							
 							String methodName = generateNameForAutoMethodCalls(blockStmt,null,methodCallExpr);
 							firstLocator = methodCallExpr.toString();
 							addPoDeclaretion(blockStmt,counter,(PODeclaration==null?"AutoPo":PODeclaration.getNameAsString()),methodName);
 							counter ++;
-						}else
+						}else {
 							inner = false;
+							firstLocator = methodCallExpr.toString();
+						}
+							
 						}
 					}
 			}
 				
 			counter ++;
 		}
+		
+		System.err.println("blockStmt: "+blockStmt);
+		System.err.println("firstLocator: "+firstLocator);
+		System.err.println("PODeclaration: "+PODeclaration);
+		System.err.println("isInner: "+isInner);
+		
 		return clone.getChildNodes().size() != blockStmt.getChildNodes().size();
 	}
 	
@@ -388,7 +402,7 @@ public class TreeDecomposer {
 			boolean waitForElementFound, boolean isInner,
 			String lastLocatorUsed
 			) {
-		
+	
 			if( blockStmt.get().getStatements().size() == 0) {
 				if (lastPageObject != null)
 					addPageObjectCall(methodTestSuite, lastPageObject, methodToAddStatement, localFieldDeclaration.get(lastPageObject.getNameAsString()),values,arguments,innerValues, innerArguments, isInner);
@@ -536,8 +550,8 @@ public class TreeDecomposer {
 				
 					//if there is an assert inside a method with other selenium command
 					//the tool create a new method only for the assert
-					if(isInner) {
-						createNewAssessorBlockForAssert(clonedNode, blockStmt, lastPageObject);
+					if(isInner) {//TODO: rivedere logica di aggiuntamento dati
+						createNewAssessorBlockForAssert(clonedNode, blockStmt, lastPageObject);//TODO: è troppo tardi, ho gia il metodo in canna
 						analyzeInstructionCalls_recursive(methodTestSuite, blockStmt, lastPageObject, methodToAddStatement, localFieldDeclaration, values,arguments, innerValues, innerArguments, waitForElementFound, isInner ,lastLocatorUsed);
 						return;
 					}
@@ -1012,17 +1026,17 @@ public class TreeDecomposer {
 //		if((statement.findAll(VariableDeclarationExpr.class)).size() ==0) {
 			List<MethodCallExpr> listOfExp = statement.findAll(MethodCallExpr.class);
 			for (MethodCallExpr exp : listOfExp) {
-				System.err.println("MethodCallExpr: "+exp);
+//				System.err.println("MethodCallExpr: "+exp);
 				
 				if(exp.toString().contains("findElement") && exp.getArguments().size() > 0) {
-					System.err.println("found: "+exp);
+//					System.err.println("found: "+exp);
 					if(exp.getArguments().get(0).toString().startsWith("By")) {
 						Expression newArgs = new NameExpr("elem");
-						System.err.println("old exp: "+exp);
+//						System.err.println("old exp: "+exp);
 						NodeList<Expression> newListArgs = new NodeList<Expression>();
 						newListArgs.add(newArgs);
 						exp.setArguments(newListArgs);
-						System.err.println("new exp: "+exp);
+//						System.err.println("new exp: "+exp);
 					}
 				}	
 			}
@@ -1035,10 +1049,10 @@ public class TreeDecomposer {
  	 */
  	private void relaceLocatorWithElemKeyWord(MethodDeclaration methodToAdd) { 		
  		for (Statement statement : methodToAdd.getBody().get().getStatements()) {
-			System.err.println("Statement: "+statement);
+//			System.err.println("Statement: "+statement);
 			
 			if(statement instanceof BlockStmt) {
-				System.err.println("Found blockStmt:");
+//				System.err.println("Found blockStmt:");
 				for (Statement blockStatement : ((BlockStmt) statement).getStatements()) {
 					relaceLocator(blockStatement);
 				}
