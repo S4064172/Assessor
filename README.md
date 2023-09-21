@@ -1,4 +1,4 @@
-# Assessor+
+# ASSESSOR+: Generator module
 ### Requisites
 1. Java: to run the tools, you need to install java at least version 8, you can find java to this link https://www.java.com/
 2. Maven: to compile the source code, maven is required, you can find maven here https://maven.apache.org/install.html. To compile the code you need to use mvn install or mvn package inside the folder, the code will be compiled inside the target folder. In alternative, you can download the release version already compiled.
